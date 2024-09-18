@@ -1,0 +1,16 @@
+streamlit       
+yfinance
+pandas
+numpy
+prophet
+scikit-learn
+plotly
+yahooquery
+requests
+openpyxl
+sympy
+PyPDF2
+openai
+google-generativeai
+tabulate
+statsmodels
