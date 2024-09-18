@@ -6,13 +6,10 @@ import google.generativeai as genai
 
 def read_excel():
     # 读取 Excel 文件中的数据
-    df_read = pd.read_excel('files/groupComp_fin.xlsx')
+    df_read = pd.read_csv('files/data.csv')
     df_read.set_index('月份', inplace=True)
     df_read['营业外收支'] = df_read['营业外收入'] - df_read['营业外支出']
-
-    # 根据选定的公司过滤数据框
-    df = df_read[(df_read.company == 'consolidate')]
-    df = df[(df.年度 == 2024)|(df.年度 == 2023)]
+    df = df_read
     return df
 
 df = read_excel()
