@@ -14,9 +14,16 @@ def read_excel():
 
 df = read_excel()
 
+st.sidebar.title("API Keys")
+openai_api_key = st.sidebar.text_input("Enter your OpenAI API key", type="password")
+gemini_api_key = st.sidebar.text_input("Enter your Gemini API key", type="password")
+
 def generate_gpt_insights_financial(prompt):
-    # Initialize the OpenAI client with the api_key
-    client = OpenAI(api_key='sk-O8I2i4KOk_ygZY7AmAQIQgXtqUZ_5tLXBd_EDuF1xRT3BlbkFJV8gG03ZH0OBZLeSSMqRxyUbjq3CkC7rgEmRYEq3rEA')
+    if not openai_api_key:
+        st.error("Please enter your OpenAI API key in the sidebar.")
+        return None, None
+    
+    client = OpenAI(api_key=openai_api_key)
     model_type = "gpt-4"
 
     completion = client.chat.completions.create(
@@ -39,8 +46,11 @@ def generate_gpt_insights_financial(prompt):
     return model_type, completion.choices[0].message.content
 
 def generate_gpt_insights_medical(prompt):
-    # Initialize the OpenAI client with the api_key
-    client = OpenAI(api_key='sk-O8I2i4KOk_ygZY7AmAQIQgXtqUZ_5tLXBd_EDuF1xRT3BlbkFJV8gG03ZH0OBZLeSSMqRxyUbjq3CkC7rgEmRYEq3rEA')
+    if not openai_api_key:
+        st.error("Please enter your OpenAI API key in the sidebar.")
+        return None, None
+    
+    client = OpenAI(api_key=openai_api_key)
     model_type = "gpt-4o"
 
     completion = client.chat.completions.create(
@@ -75,8 +85,11 @@ def get_response(messages, model="gemini-pro"):
 
 # Function to generate insights using generative AI
 def generate_gemini_insights(prompt):
-    # Set up the API key
-    genai.configure(api_key="AIzaSyD97bXoPlXXEWXURaCOxL2yZWXJKhmEce0")
+    if not gemini_api_key:
+        st.error("Please enter your Gemini API key in the sidebar.")
+        return "API key is required to generate insights."
+    
+    genai.configure(api_key=gemini_api_key)
     # Prepare the data summary
     
     model = genai.GenerativeModel("gemini-pro")
@@ -251,47 +264,75 @@ with tab1:
     st.write("财务数据分析")
 
     if st.button("生成详细分析(财务)", key="gpt_button_financial"):
-        model_type, insights = generate_gpt_insights_financial(prompt)
-        st.write(insights)
+        if openai_api_key:
+            model_type, insights = generate_gpt_insights_financial(prompt)
+            if insights:
+                st.write(insights)
+        else:
+            st.error("Please enter your OpenAI API key in the sidebar.")
 
     st.write("医疗数据分析")
     if st.button("生成详细分析(患者 1)", key="gpt_button_medical1"):
-        model_type, insights = generate_gpt_insights_medical(prompt_medical[0])
-        st.write(medical_df1)
-        st.write(insights)
+        if openai_api_key:
+            model_type, insights = generate_gpt_insights_medical(prompt_medical[0])
+            if insights:
+                st.write(medical_df1)
+                st.write(insights)
+        else:
+            st.error("Please enter your OpenAI API key in the sidebar.")
 
     if st.button("生成详细分析(患者 2)", key="gpt_button_medical2"):
-        model_type, insights = generate_gpt_insights_medical(prompt_medical[1])   
-        st.write(medical_df2)
-        st.write(insights)
+        if openai_api_key:
+            model_type, insights = generate_gpt_insights_medical(prompt_medical[1])   
+            if insights:
+                st.write(medical_df2)
+                st.write(insights)
+        else:
+            st.error("Please enter your OpenAI API key in the sidebar.")
 
     if st.button("生成详细分析(患者 3)", key="gpt_button_medical3"):
-        model_type, insights = generate_gpt_insights_medical(prompt_medical[2])
-        st.write(medical_df3)
-        st.write(insights)
+        if openai_api_key:
+            model_type, insights = generate_gpt_insights_medical(prompt_medical[2])
+            if insights:
+                st.write(medical_df3)
+                st.write(insights)
+        else:
+            st.error("Please enter your OpenAI API key in the sidebar.")
 
 with tab2:
     st.subheader("Gemini Pro")
     st.write("财务数据分析")
     if st.button("生成详细分析(财务)", key="gemini_button_financial"):
-        insights = generate_gemini_insights(prompt)
-        st.write(insights)
+        if gemini_api_key:
+            insights = generate_gemini_insights(prompt)
+            st.write(insights)
+        else:
+            st.error("Please enter your Gemini API key in the sidebar.")
 
     st.write("医疗数据分析")
     if st.button("生成详细分析(患者 1)", key="gemini_button_medical1"):
-        insights = generate_gemini_insights(prompt_medical[0])
-        st.write(medical_df1)
-        st.write(insights)
+        if gemini_api_key:
+            insights = generate_gemini_insights(prompt_medical[0])
+            st.write(medical_df1)
+            st.write(insights)
+        else:
+            st.error("Please enter your Gemini API key in the sidebar.")
 
     if st.button("生成详细分析(患者 2)", key="gemini_button_medical2"):
-        insights = generate_gemini_insights(prompt_medical[1])
-        st.write(medical_df2)
-        st.write(insights)
+        if gemini_api_key:
+            insights = generate_gemini_insights(prompt_medical[1])
+            st.write(medical_df2)
+            st.write(insights)
+        else:
+            st.error("Please enter your Gemini API key in the sidebar.")
 
     if st.button("生成详细分析(患者 3)", key="gemini_button_medical3"):
-        insights = generate_gemini_insights(prompt_medical[2])
-        st.write(medical_df3)
-        st.write(insights)
+        if gemini_api_key:
+            insights = generate_gemini_insights(prompt_medical[2])
+            st.write(medical_df3)
+            st.write(insights)
+        else:
+            st.error("Please enter your Gemini API key in the sidebar.")
 
 
 
