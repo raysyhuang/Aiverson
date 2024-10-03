@@ -132,7 +132,7 @@ else:
         """)
 
 # Debug mode
-debug_mode = st.checkbox("Show Debug Information" if language == 'English' else "顯示除錯信息", value=True)
+debug_mode = st.checkbox("Show Debug Information" if language == 'English' else "顯示除錯信息", value=False)
 
 # User Options
 app_mode = st.selectbox('Choose the app mode' if language == 'English' else '選擇應用模式', ['Run New Analysis' if language == 'English' else '運行新分析', 'View Saved Results' if language == 'English' else '查看已保存的結果'])
@@ -228,34 +228,34 @@ if app_mode == 'Run New Analysis' if language == 'English' else '運行新分析
 
     # Button to start analysis
     if st.button('Start Analysis' if language == 'English' else '開始分析'):
-        st.markdown(f"## {'Analysis Results' if language == 'English' else '分析結果'}")
+        with st.spinner('Running analysis...' if language == 'English' else '正在進行分析...'):
+            st.markdown(f"## {'Analysis Results' if language == 'English' else '分析結果'}")
 
-        # Initialize dictionaries
-        ticker_data = {}
-        latest_prices = {}
-        results = {}
+            # Initialize dictionaries
+            ticker_data = {}
+            latest_prices = {}
+            results = {}
 
-        # Progress bar
-        progress_bar = st.progress(0)
-        progress_step = 1 / len(selected_tickers) if selected_tickers else 1
+            # Progress bar
+            progress_bar = st.progress(0)
+            progress_step = 1 / len(selected_tickers) if selected_tickers else 1
 
-        # Fetch exogenous data if needed
-        if use_exogenous and selected_exogenous:
-            st.write("Fetching exogenous data..." if language == 'English' else "正在獲取外生變數數據...")
-            exog_data = {}
-            for exog_symbol in selected_exogenous:
-                exog_df = yf.download(exog_symbol, start=start_date, end=end_date + pd.DateOffset(days=1), progress=False)
-                exog_df = exog_df['Adj Close'].resample('D').last().fillna(method='ffill')
-                exog_df = exog_df[exog_df.index <= current_date]
-                exog_data[exog_symbol] = exog_df
-            exog_df_combined = pd.DataFrame(exog_data)
-            exog_df_combined = exog_df_combined.fillna(method='ffill').fillna(method='bfill')
-        else:
-            exog_df_combined = None
+            # Fetch exogenous data if needed
+            if use_exogenous and selected_exogenous:
+                st.write("Fetching exogenous data..." if language == 'English' else "正在獲取外生變數數據...")
+                exog_data = {}
+                for exog_symbol in selected_exogenous:
+                    exog_df = yf.download(exog_symbol, start=start_date, end=end_date + pd.DateOffset(days=1), progress=False)
+                    exog_df = exog_df['Adj Close'].resample('D').last().fillna(method='ffill')
+                    exog_df = exog_df[exog_df.index <= current_date]
+                    exog_data[exog_symbol] = exog_df
+                exog_df_combined = pd.DataFrame(exog_data)
+                exog_df_combined = exog_df_combined.fillna(method='ffill').fillna(method='bfill')
+            else:
+                exog_df_combined = None
 
-        # Process each ticker
-        for idx, ticker in enumerate(selected_tickers):
-            with st.spinner(f"Analyzing {ticker}..." if language == 'English' else f"正在分析 {ticker}..."):
+            # Process each ticker
+            for idx, ticker in enumerate(selected_tickers):
                 st.markdown(f"### {ticker}")
                 start_time_ticker = time.time()
                 try:
@@ -319,154 +319,158 @@ if app_mode == 'Run New Analysis' if language == 'English' else '運行新分析
                         exog_train, exog_test = None, None
 
                     # ARIMA Model
-                    try:
-                        model_autoARIMA = auto_arima(
-                            train_target,
-                            exogenous=exog_train,
-                            start_p=1,
-                            start_q=1,
-                            max_p=max_p,
-                            max_q=max_q,
-                            max_d=max_d,
-                            m=m if seasonal else 1,
-                            seasonal=seasonal,
-                            trace=False,
-                            error_action='ignore',
-                            suppress_warnings=True,
-                            stepwise=True,
-                            information_criterion='aic',
-                            max_order=20,
-                            n_jobs=-1
-                        )
-                        order = model_autoARIMA.order
-                        seasonal_order = model_autoARIMA.seasonal_order
+                    with st.spinner('Running ARIMA model...' if language == 'English' else '正在運行ARIMA模型...'):
+                        try:
+                            model_autoARIMA = auto_arima(
+                                train_target,
+                                exogenous=exog_train,
+                                start_p=1,
+                                start_q=1,
+                                max_p=max_p,
+                                max_q=max_q,
+                                max_d=max_d,
+                                m=m if seasonal else 1,
+                                seasonal=seasonal,
+                                trace=False,
+                                error_action='ignore',
+                                suppress_warnings=True,
+                                stepwise=True,
+                                information_criterion='aic',
+                                max_order=20,
+                                n_jobs=-1
+                            )
+                            order = model_autoARIMA.order
+                            seasonal_order = model_autoARIMA.seasonal_order
 
-                        model = SARIMAX(
-                            train_target,
-                            exog=exog_train,
-                            order=order,
-                            seasonal_order=seasonal_order,
-                            enforce_stationarity=False,
-                            enforce_invertibility=False
-                        )
-                        model_fit = model.fit(disp=False)
+                            model = SARIMAX(
+                                train_target,
+                                exog=exog_train,
+                                order=order,
+                                seasonal_order=seasonal_order,
+                                enforce_stationarity=False,
+                                enforce_invertibility=False
+                            )
+                            model_fit = model.fit(disp=False)
 
-                        # Forecast
-                        forecast = model_fit.forecast(steps=len(test_target), exog=exog_test)
-                        # Evaluate
-                        mae = mean_absolute_error(test_target, forecast)
-                        rmse = np.sqrt(mean_squared_error(test_target, forecast))
-                        mape = np.mean(np.abs((test_target - forecast) / test_target)) * 100
+                            # Forecast
+                            forecast = model_fit.forecast(steps=len(test_target), exog=exog_test)
+                            # Evaluate
+                            mae = mean_absolute_error(test_target, forecast)
+                            rmse = np.sqrt(mean_squared_error(test_target, forecast))
+                            mape = np.mean(np.abs((test_target - forecast) / test_target)) * 100
 
-                        model_performance['ARIMA']['MAE'].append(mae)
-                        model_performance['ARIMA']['RMSE'].append(rmse)
-                        model_performance['ARIMA']['MAPE'].append(mape)
-                    except Exception as e:
-                        if debug_mode:
-                            st.error(f"ARIMA failed for {ticker}: {e}")
+                            model_performance['ARIMA']['MAE'].append(mae)
+                            model_performance['ARIMA']['RMSE'].append(rmse)
+                            model_performance['ARIMA']['MAPE'].append(mape)
+                        except Exception as e:
+                            if debug_mode:
+                                st.error(f"ARIMA failed for {ticker}: {e}")
 
                     # Prophet Model
-                    try:
-                        prophet_train = pd.DataFrame({'ds': train_target.index, 'y': train_target.values})
-                        prophet_test = pd.DataFrame({'ds': test_target.index, 'y': test_target.values})
-                        if use_exogenous and exog_train is not None:
-                            for col in exog_train.columns:
-                                prophet_train[col] = exog_train[col].values
-                                prophet_test[col] = exog_test[col].values
-                            prophet_model = Prophet(daily_seasonality=seasonal)
-                            for col in exog_train.columns:
-                                prophet_model.add_regressor(col)
-                        else:
-                            prophet_model = Prophet(daily_seasonality=seasonal)
-                        prophet_model.fit(prophet_train)
+                    with st.spinner('Running Prophet model...' if language == 'English' else '正在運行Prophet模型...'):
+                        try:
+                            prophet_train = pd.DataFrame({'ds': train_target.index, 'y': train_target.values})
+                            prophet_test = pd.DataFrame({'ds': test_target.index, 'y': test_target.values})
+                            if use_exogenous and exog_train is not None:
+                                for col in exog_train.columns:
+                                    prophet_train[col] = exog_train[col].values
+                                    prophet_test[col] = exog_test[col].values
+                                prophet_model = Prophet(daily_seasonality=seasonal)
+                                for col in exog_train.columns:
+                                    prophet_model.add_regressor(col)
+                            else:
+                                prophet_model = Prophet(daily_seasonality=seasonal)
+                            prophet_model.fit(prophet_train)
 
-                        forecast = prophet_model.predict(prophet_test)
-                        forecast_values = forecast['yhat'].values
+                            forecast = prophet_model.predict(prophet_test)
+                            forecast_values = forecast['yhat'].values
 
-                        # Evaluate
-                        mae = mean_absolute_error(test_target, forecast_values)
-                        rmse = np.sqrt(mean_squared_error(test_target, forecast_values))
-                        mape = np.mean(np.abs((test_target - forecast_values) / test_target)) * 100
+                            # Evaluate
+                            mae = mean_absolute_error(test_target, forecast_values)
+                            rmse = np.sqrt(mean_squared_error(test_target, forecast_values))
+                            mape = np.mean(np.abs((test_target - forecast_values) / test_target)) * 100
 
-                        model_performance['Prophet']['MAE'].append(mae)
-                        model_performance['Prophet']['RMSE'].append(rmse)
-                        model_performance['Prophet']['MAPE'].append(mape)
-                    except Exception as e:
-                        if debug_mode:
-                            st.error(f"Prophet failed for {ticker}: {e}")
+                            model_performance['Prophet']['MAE'].append(mae)
+                            model_performance['Prophet']['RMSE'].append(rmse)
+                            model_performance['Prophet']['MAPE'].append(mape)
+                        except Exception as e:
+                            if debug_mode:
+                                st.error(f"Prophet failed for {ticker}: {e}")
 
                     # XGBoost Model
-                    try:
-                        xgb_model = xgb.XGBRegressor(objective='reg:squarederror', n_estimators=100)
-                        xgb_model.fit(train_features, train_target)
-                        forecast = xgb_model.predict(test_features)
+                    with st.spinner('Running XGBoost model...' if language == 'English' else '正在運行XGBoost模型...'):
+                        try:
+                            xgb_model = xgb.XGBRegressor(objective='reg:squarederror', n_estimators=100)
+                            xgb_model.fit(train_features, train_target)
+                            forecast = xgb_model.predict(test_features)
 
-                        # Evaluate
-                        mae = mean_absolute_error(test_target, forecast)
-                        rmse = np.sqrt(mean_squared_error(test_target, forecast))
-                        mape = np.mean(np.abs((test_target - forecast) / test_target)) * 100
+                            # Evaluate
+                            mae = mean_absolute_error(test_target, forecast)
+                            rmse = np.sqrt(mean_squared_error(test_target, forecast))
+                            mape = np.mean(np.abs((test_target - forecast) / test_target)) * 100
 
-                        model_performance['XGBoost']['MAE'].append(mae)
-                        model_performance['XGBoost']['RMSE'].append(rmse)
-                        model_performance['XGBoost']['MAPE'].append(mape)
-                    except Exception as e:
-                        if debug_mode:
-                            st.error(f"XGBoost failed for {ticker}: {e}")
+                            model_performance['XGBoost']['MAE'].append(mae)
+                            model_performance['XGBoost']['RMSE'].append(rmse)
+                            model_performance['XGBoost']['MAPE'].append(mape)
+                        except Exception as e:
+                            if debug_mode:
+                                st.error(f"XGBoost failed for {ticker}: {e}")
 
                     # LSTM Model
-                    try:
-                        from sklearn.preprocessing import MinMaxScaler
+                    with st.spinner('Running LSTM model...' if language == 'English' else '正在運行LSTM模型...'):
+                        try:
+                            from sklearn.preprocessing import MinMaxScaler
 
-                        scaler = MinMaxScaler(feature_range=(0, 1))
-                        scaled_train = scaler.fit_transform(train_target.values.reshape(-1, 1))
+                            scaler = MinMaxScaler(feature_range=(0, 1))
+                            scaled_train = scaler.fit_transform(train_target.values.reshape(-1, 1))
 
-                        # Prepare data for LSTM
-                        def create_dataset(dataset, look_back=1):
-                            X, Y = [], []
-                            for i in range(len(dataset) - look_back):
-                                X.append(dataset[i:(i + look_back), 0])
-                                Y.append(dataset[i + look_back, 0])
-                            return np.array(X), np.array(Y)
+                            # Prepare data for LSTM
+                            def create_dataset(dataset, look_back=1):
+                                X, Y = [], []
+                                for i in range(len(dataset) - look_back):
+                                    X.append(dataset[i:(i + look_back), 0])
+                                    Y.append(dataset[i + look_back, 0])
+                                return np.array(X), np.array(Y)
 
-                        look_back = 5
-                        X_train_lstm, Y_train_lstm = create_dataset(scaled_train, look_back)
-                        X_train_lstm = X_train_lstm.reshape((X_train_lstm.shape[0], X_train_lstm.shape[1], 1))
+                            look_back = 5
+                            X_train_lstm, Y_train_lstm = create_dataset(scaled_train, look_back)
+                            X_train_lstm = X_train_lstm.reshape((X_train_lstm.shape[0], X_train_lstm.shape[1], 1))
 
-                        # Build LSTM Model
-                        lstm_model = Sequential()
-                        lstm_model.add(LSTM(50, input_shape=(X_train_lstm.shape[1], X_train_lstm.shape[2])))
-                        lstm_model.add(Dense(1))
-                        lstm_model.compile(loss='mean_squared_error', optimizer='adam')
-                        lstm_model.fit(X_train_lstm, Y_train_lstm, epochs=10, batch_size=16, verbose=0)
+                            # Build LSTM Model
+                            lstm_model = Sequential()
+                            lstm_model.add(LSTM(50, input_shape=(X_train_lstm.shape[1], X_train_lstm.shape[2])))
+                            lstm_model.add(Dense(1))
+                            lstm_model.compile(loss='mean_squared_error', optimizer='adam')
+                            lstm_model.fit(X_train_lstm, Y_train_lstm, epochs=10, batch_size=16, verbose=0)
 
-                        # Prepare test data
-                        total_data = np.concatenate((train_target.values, test_target.values))
-                        inputs = total_data[len(total_data) - len(test_target) - look_back:]
-                        inputs_scaled = scaler.transform(inputs.reshape(-1, 1))
-                        X_test_lstm = []
-                        for i in range(look_back, len(inputs_scaled)):
-                            X_test_lstm.append(inputs_scaled[i - look_back:i, 0])
-                        X_test_lstm = np.array(X_test_lstm)
-                        X_test_lstm = X_test_lstm.reshape((X_test_lstm.shape[0], X_test_lstm.shape[1], 1))
+                            # Prepare test data
+                            total_data = np.concatenate((train_target.values, test_target.values))
+                            inputs = total_data[len(total_data) - len(test_target) - look_back:]
+                            inputs_scaled = scaler.transform(inputs.reshape(-1, 1))
+                            X_test_lstm = []
+                            for i in range(look_back, len(inputs_scaled)):
+                                X_test_lstm.append(inputs_scaled[i - look_back:i, 0])
+                            X_test_lstm = np.array(X_test_lstm)
+                            X_test_lstm = X_test_lstm.reshape((X_test_lstm.shape[0], X_test_lstm.shape[1], 1))
 
-                        # Forecast
-                        forecast_scaled = lstm_model.predict(X_test_lstm)
-                        forecast = scaler.inverse_transform(forecast_scaled).flatten()
+                            # Forecast
+                            forecast_scaled = lstm_model.predict(X_test_lstm)
+                            forecast = scaler.inverse_transform(forecast_scaled).flatten()
 
-                        # Align forecast with test_target
-                        test_target_lstm = test_target.values[:len(forecast)]
+                            # Align forecast with test_target
+                            test_target_lstm = test_target.values[:len(forecast)]
 
-                        # Evaluate
-                        mae = mean_absolute_error(test_target_lstm, forecast)
-                        rmse = np.sqrt(mean_squared_error(test_target_lstm, forecast))
-                        mape = np.mean(np.abs((test_target_lstm - forecast) / test_target_lstm)) * 100
+                            # Evaluate
+                            mae = mean_absolute_error(test_target_lstm, forecast)
+                            rmse = np.sqrt(mean_squared_error(test_target_lstm, forecast))
+                            mape = np.mean(np.abs((test_target_lstm - forecast) / test_target_lstm)) * 100
 
-                        model_performance['LSTM']['MAE'].append(mae)
-                        model_performance['LSTM']['RMSE'].append(rmse)
-                        model_performance['LSTM']['MAPE'].append(mape)
-                    except Exception as e:
-                        if debug_mode:
-                            st.error(f"LSTM failed for {ticker}: {e}")
+                            model_performance['LSTM']['MAE'].append(mae)
+                            model_performance['LSTM']['RMSE'].append(rmse)
+                            model_performance['LSTM']['MAPE'].append(mape)
+                        except Exception as e:
+                            if debug_mode:
+                                st.error(f"LSTM failed for {ticker}: {e}")
 
                 # Aggregate Model Performance
                 performance_summary = {}
@@ -528,7 +532,7 @@ if app_mode == 'Run New Analysis' if language == 'English' else '運行新分析
                         # Forecast with all models
                         for model_name in models:
                             if model_name == 'ARIMA':
-                                with st.spinner(f"Running ARIMA model for {ticker}..." if language == 'English' else f"正在運行 {ticker} 的 ARIMA 模型..."):
+                                with st.spinner('Running ARIMA model...' if language == 'English' else '正在運行ARIMA模型...'):
                                     try:
                                         model_autoARIMA_full = auto_arima(
                                             target,
@@ -571,7 +575,7 @@ if app_mode == 'Run New Analysis' if language == 'English' else '運行新分析
                                             st.error(f"ARIMA forecasting failed for {ticker}: {e}")
 
                             elif model_name == 'Prophet':
-                                with st.spinner(f"Running Prophet model for {ticker}..." if language == 'English' else f"正在運行 {ticker} 的 Prophet 模型..."):
+                                with st.spinner('Running Prophet model...' if language == 'English' else '正在運行Prophet模型...'):
                                     try:
                                         prophet_full = pd.DataFrame({'ds': target.index, 'y': target.values})
                                         if use_exogenous and exog is not None:
@@ -601,7 +605,7 @@ if app_mode == 'Run New Analysis' if language == 'English' else '運行新分析
                                             st.error(f"Prophet forecasting failed for {ticker}: {e}")
 
                             elif model_name == 'XGBoost':
-                                with st.spinner(f"Running XGBoost model for {ticker}..." if language == 'English' else f"正在運行 {ticker} 的 XGBoost 模型..."):
+                                with st.spinner('Running XGBoost model...' if language == 'English' else '正在運行XGBoost模型...'):
                                     try:
                                         xgb_model = xgb.XGBRegressor(objective='reg:squarederror', n_estimators=100)
                                         xgb_model.fit(features, target)
@@ -619,7 +623,7 @@ if app_mode == 'Run New Analysis' if language == 'English' else '運行新分析
                                             st.error(f"XGBoost forecasting failed for {ticker}: {e}")
 
                             elif model_name == 'LSTM':
-                                with st.spinner(f"Running LSTM model for {ticker}..." if language == 'English' else f"正在運行 {ticker} 的 LSTM 模型..."):
+                                with st.spinner('Running LSTM model...' if language == 'English' else '正在運行LSTM模型...'):
                                     try:
                                         scaler = MinMaxScaler(feature_range=(0, 1))
                                         scaled_target = scaler.fit_transform(target.values.reshape(-1, 1))
@@ -773,20 +777,20 @@ if app_mode == 'Run New Analysis' if language == 'English' else '運行新分析
                 if debug_mode:
                     st.write(f"Time taken to process {ticker}: {elapsed_time_ticker:.2f} seconds")
 
-            # Update progress bar
-            progress_bar.progress((idx + 1) * progress_step)
+                # Update progress bar
+                progress_bar.progress((idx + 1) * progress_step)
 
-        if results:
-            st.markdown("## Model Evaluation Metrics" if language == 'English' else "## 模型評估指標")
-            for ticker in results:
-                st.subheader(f"{ticker}")
-                performance_df = pd.DataFrame(results[ticker]).T
-                st.dataframe(performance_df.style.format("{:.2f}"))
-        else:
-            st.warning("No results to display." if language == 'English' else "沒有結果可顯示。")
+            if results:
+                st.markdown("## Model Evaluation Metrics" if language == 'English' else "## 模型評估指標")
+                for ticker in results:
+                    st.subheader(f"{ticker}")
+                    performance_df = pd.DataFrame(results[ticker]).T
+                    st.dataframe(performance_df.style.format("{:.2f}"))
+            else:
+                st.warning("No results to display." if language == 'English' else "沒有結果可顯示。")
 
-        # Close the database connection after analysis
-        conn.close()
+            # Close the database connection after analysis
+            conn.close()
 
     else:
         st.info("Configure the parameters above and click **Start Analysis** to begin." if language == 'English' else "請配置以上參數，然後點擊 **開始分析** 以開始。")
