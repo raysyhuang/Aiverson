@@ -144,7 +144,7 @@ if app_mode == 'Run New Analysis' if language == 'English' else '運行新分析
     # Ticker symbol input
     ticker_input = st.text_input(
         'Enter ticker symbols separated by commas (e.g., AAPL, GOOG, TSLA, META, MSFT, RSP, QQQ, MOAT, PFF, VNQ, IWY)' if language == 'English' else '輸入股票代碼，以逗號分隔（例如，AAPL, GOOG, TSLA, META, MSFT, RSP, QQQ, MOAT, PFF, VNQ, IWY）',
-        value='RSP, QQQ, MOAT, PFF, VNQ, IWY'  # Default tickers
+        value='TSLA, QQQ'  # Default tickers
     )
 
     # Process the ticker symbols
@@ -205,7 +205,7 @@ if app_mode == 'Run New Analysis' if language == 'English' else '運行新分析
 
         with colB:
             st.markdown("**Seasonal Parameters**" if language == 'English' else "**季節性參數**")
-            seasonal = st.checkbox('Include Seasonality (SARIMA)' if language == 'English' else '包含季節性（SARIMA）', value=True)
+            seasonal = st.checkbox('Include Seasonality (SARIMA)' if language == 'English' else '包含季節性（SARIMA）', value=False)
             m = st.number_input('Seasonal Period (m)' if language == 'English' else '季節性週期（m）',
                                 min_value=1, value=7, step=1, help='Number of time steps for a single seasonal period (e.g., 7 for weekly seasonality).' if language == 'English' else '單個季節性週期的時間步數（例如，每週季節性為7）。')
 
@@ -255,518 +255,523 @@ if app_mode == 'Run New Analysis' if language == 'English' else '運行新分析
 
         # Process each ticker
         for idx, ticker in enumerate(selected_tickers):
-            st.markdown(f"### {ticker}")
-            start_time_ticker = time.time()
-            try:
-                data = yf.download(ticker, start=start_date, end=end_date + pd.DateOffset(days=1), progress=False)
-            except Exception as e:
-                st.warning(f"Failed to fetch data for {ticker}: {e}")
-                continue
+            with st.spinner(f"Analyzing {ticker}..." if language == 'English' else f"正在分析 {ticker}..."):
+                st.markdown(f"### {ticker}")
+                start_time_ticker = time.time()
+                try:
+                    data = yf.download(ticker, start=start_date, end=end_date + pd.DateOffset(days=1), progress=False)
+                except Exception as e:
+                    st.warning(f"Failed to fetch data for {ticker}: {e}")
+                    continue
 
-            # Check if data is empty
-            if data.empty:
-                st.warning(f"No data found for {ticker}. Skipping..." if language == 'English' else f"未找到{ticker}的數據，跳過...")
-                continue
+                # Check if data is empty
+                if data.empty:
+                    st.warning(f"No data found for {ticker}. Skipping..." if language == 'English' else f"未找到{ticker}的數據，跳過...")
+                    continue
 
-            # Use daily data
-            data = data['Adj Close'].resample('D').last().fillna(method='ffill')
-            data = data[data.index <= current_date]
-            ticker_data[ticker] = data
-            # Store the latest closing price
-            latest_prices[ticker] = data.iloc[-1]
+                # Use daily data
+                data = data['Adj Close'].resample('D').last().fillna(method='ffill')
+                data = data[data.index <= current_date]
+                ticker_data[ticker] = data
+                # Store the latest closing price
+                latest_prices[ticker] = data.iloc[-1]
 
-            # Ensure the data has enough points
-            if len(data) < 365:  # Minimum 1 year of daily data
-                st.warning(f"Not enough data to process {ticker}." if language == 'English' else f"{ticker}的數據不足，無法處理。")
-                continue
+                # Ensure the data has enough points
+                if len(data) < 365:  # Minimum 1 year of daily data
+                    st.warning(f"Not enough data to process {ticker}." if language == 'English' else f"{ticker}的數據不足，無法處理。")
+                    continue
 
-            # Feature Engineering: Add Technical Indicators
-            data_df = data.to_frame(name='Adj Close')
-            data_df['Returns'] = data_df['Adj Close'].pct_change()
-            data_df['MA5'] = data_df['Adj Close'].rolling(window=5).mean()
-            data_df['MA10'] = data_df['Adj Close'].rolling(window=10).mean()
-            data_df['MA20'] = data_df['Adj Close'].rolling(window=20).mean()
-            data_df['STD5'] = data_df['Adj Close'].rolling(window=5).std()
-            data_df['STD10'] = data_df['Adj Close'].rolling(window=10).std()
-            data_df['STD20'] = data_df['Adj Close'].rolling(window=20).std()
-            data_df = data_df.dropna()
+                # Feature Engineering: Add Technical Indicators
+                data_df = data.to_frame(name='Adj Close')
+                data_df['Returns'] = data_df['Adj Close'].pct_change()
+                data_df['MA5'] = data_df['Adj Close'].rolling(window=5).mean()
+                data_df['MA10'] = data_df['Adj Close'].rolling(window=10).mean()
+                data_df['MA20'] = data_df['Adj Close'].rolling(window=20).mean()
+                data_df['STD5'] = data_df['Adj Close'].rolling(window=5).std()
+                data_df['STD10'] = data_df['Adj Close'].rolling(window=10).std()
+                data_df['STD20'] = data_df['Adj Close'].rolling(window=20).std()
+                data_df = data_df.dropna()
 
-            # Split features and target
-            features = data_df.drop(columns=['Adj Close'])
-            target = data_df['Adj Close']
+                # Split features and target
+                features = data_df.drop(columns=['Adj Close'])
+                target = data_df['Adj Close']
 
-            # Prepare exogenous variables
-            if use_exogenous and exog_df_combined is not None:
-                exog = exog_df_combined.loc[target.index]
-                exog = exog.fillna(method='ffill').fillna(method='bfill')
-            else:
-                exog = None
-
-            # Implement Time Series Cross-Validation (Walk-Forward Validation)
-            from sklearn.model_selection import TimeSeriesSplit
-
-            tscv = TimeSeriesSplit(n_splits=5)
-            models = ['ARIMA', 'Prophet', 'XGBoost', 'LSTM']
-            model_performance = {model_name: {'MAE': [], 'RMSE': [], 'MAPE': []} for model_name in models}
-
-            for train_index, test_index in tscv.split(target):
-                train_target, test_target = target.iloc[train_index], target.iloc[test_index]
-                train_features, test_features = features.iloc[train_index], features.iloc[test_index]
-                if exog is not None:
-                    exog_train, exog_test = exog.iloc[train_index], exog.iloc[test_index]
+                # Prepare exogenous variables
+                if use_exogenous and exog_df_combined is not None:
+                    exog = exog_df_combined.loc[target.index]
+                    exog = exog.fillna(method='ffill').fillna(method='bfill')
                 else:
-                    exog_train, exog_test = None, None
+                    exog = None
 
-                # ARIMA Model
-                try:
-                    model_autoARIMA = auto_arima(
-                        train_target,
-                        exogenous=exog_train,
-                        start_p=1,
-                        start_q=1,
-                        max_p=max_p,
-                        max_q=max_q,
-                        max_d=max_d,
-                        m=m if seasonal else 1,
-                        seasonal=seasonal,
-                        trace=False,
-                        error_action='ignore',
-                        suppress_warnings=True,
-                        stepwise=True,
-                        information_criterion='aic',
-                        max_order=20,
-                        n_jobs=-1
-                    )
-                    order = model_autoARIMA.order
-                    seasonal_order = model_autoARIMA.seasonal_order
+                # Implement Time Series Cross-Validation (Walk-Forward Validation)
+                from sklearn.model_selection import TimeSeriesSplit
 
-                    model = SARIMAX(
-                        train_target,
-                        exog=exog_train,
-                        order=order,
-                        seasonal_order=seasonal_order,
-                        enforce_stationarity=False,
-                        enforce_invertibility=False
-                    )
-                    model_fit = model.fit(disp=False)
+                tscv = TimeSeriesSplit(n_splits=5)
+                models = ['ARIMA', 'Prophet', 'XGBoost', 'LSTM']
+                model_performance = {model_name: {'MAE': [], 'RMSE': [], 'MAPE': []} for model_name in models}
 
-                    # Forecast
-                    forecast = model_fit.forecast(steps=len(test_target), exog=exog_test)
-                    # Evaluate
-                    mae = mean_absolute_error(test_target, forecast)
-                    rmse = np.sqrt(mean_squared_error(test_target, forecast))
-                    mape = np.mean(np.abs((test_target - forecast) / test_target)) * 100
-
-                    model_performance['ARIMA']['MAE'].append(mae)
-                    model_performance['ARIMA']['RMSE'].append(rmse)
-                    model_performance['ARIMA']['MAPE'].append(mape)
-                except Exception as e:
-                    if debug_mode:
-                        st.error(f"ARIMA failed for {ticker}: {e}")
-
-                # Prophet Model
-                try:
-                    prophet_train = pd.DataFrame({'ds': train_target.index, 'y': train_target.values})
-                    prophet_test = pd.DataFrame({'ds': test_target.index, 'y': test_target.values})
-                    if use_exogenous and exog_train is not None:
-                        for col in exog_train.columns:
-                            prophet_train[col] = exog_train[col].values
-                            prophet_test[col] = exog_test[col].values
-                        prophet_model = Prophet(daily_seasonality=seasonal)
-                        for col in exog_train.columns:
-                            prophet_model.add_regressor(col)
+                for train_index, test_index in tscv.split(target):
+                    train_target, test_target = target.iloc[train_index], target.iloc[test_index]
+                    train_features, test_features = features.iloc[train_index], features.iloc[test_index]
+                    if exog is not None:
+                        exog_train, exog_test = exog.iloc[train_index], exog.iloc[test_index]
                     else:
-                        prophet_model = Prophet(daily_seasonality=seasonal)
-                    prophet_model.fit(prophet_train)
+                        exog_train, exog_test = None, None
 
-                    forecast = prophet_model.predict(prophet_test)
-                    forecast_values = forecast['yhat'].values
-
-                    # Evaluate
-                    mae = mean_absolute_error(test_target, forecast_values)
-                    rmse = np.sqrt(mean_squared_error(test_target, forecast_values))
-                    mape = np.mean(np.abs((test_target - forecast_values) / test_target)) * 100
-
-                    model_performance['Prophet']['MAE'].append(mae)
-                    model_performance['Prophet']['RMSE'].append(rmse)
-                    model_performance['Prophet']['MAPE'].append(mape)
-                except Exception as e:
-                    if debug_mode:
-                        st.error(f"Prophet failed for {ticker}: {e}")
-
-                # XGBoost Model
-                try:
-                    xgb_model = xgb.XGBRegressor(objective='reg:squarederror', n_estimators=100)
-                    xgb_model.fit(train_features, train_target)
-                    forecast = xgb_model.predict(test_features)
-
-                    # Evaluate
-                    mae = mean_absolute_error(test_target, forecast)
-                    rmse = np.sqrt(mean_squared_error(test_target, forecast))
-                    mape = np.mean(np.abs((test_target - forecast) / test_target)) * 100
-
-                    model_performance['XGBoost']['MAE'].append(mae)
-                    model_performance['XGBoost']['RMSE'].append(rmse)
-                    model_performance['XGBoost']['MAPE'].append(mape)
-                except Exception as e:
-                    if debug_mode:
-                        st.error(f"XGBoost failed for {ticker}: {e}")
-
-                # LSTM Model
-                try:
-                    from sklearn.preprocessing import MinMaxScaler
-
-                    scaler = MinMaxScaler(feature_range=(0, 1))
-                    scaled_train = scaler.fit_transform(train_target.values.reshape(-1, 1))
-
-                    # Prepare data for LSTM
-                    def create_dataset(dataset, look_back=1):
-                        X, Y = [], []
-                        for i in range(len(dataset) - look_back):
-                            X.append(dataset[i:(i + look_back), 0])
-                            Y.append(dataset[i + look_back, 0])
-                        return np.array(X), np.array(Y)
-
-                    look_back = 5
-                    X_train_lstm, Y_train_lstm = create_dataset(scaled_train, look_back)
-                    X_train_lstm = X_train_lstm.reshape((X_train_lstm.shape[0], X_train_lstm.shape[1], 1))
-
-                    # Build LSTM Model
-                    lstm_model = Sequential()
-                    lstm_model.add(LSTM(50, input_shape=(X_train_lstm.shape[1], X_train_lstm.shape[2])))
-                    lstm_model.add(Dense(1))
-                    lstm_model.compile(loss='mean_squared_error', optimizer='adam')
-                    lstm_model.fit(X_train_lstm, Y_train_lstm, epochs=10, batch_size=16, verbose=0)
-
-                    # Prepare test data
-                    total_data = np.concatenate((train_target.values, test_target.values))
-                    inputs = total_data[len(total_data) - len(test_target) - look_back:]
-                    inputs_scaled = scaler.transform(inputs.reshape(-1, 1))
-                    X_test_lstm = []
-                    for i in range(look_back, len(inputs_scaled)):
-                        X_test_lstm.append(inputs_scaled[i - look_back:i, 0])
-                    X_test_lstm = np.array(X_test_lstm)
-                    X_test_lstm = X_test_lstm.reshape((X_test_lstm.shape[0], X_test_lstm.shape[1], 1))
-
-                    # Forecast
-                    forecast_scaled = lstm_model.predict(X_test_lstm)
-                    forecast = scaler.inverse_transform(forecast_scaled).flatten()
-
-                    # Align forecast with test_target
-                    test_target_lstm = test_target.values[:len(forecast)]
-
-                    # Evaluate
-                    mae = mean_absolute_error(test_target_lstm, forecast)
-                    rmse = np.sqrt(mean_squared_error(test_target_lstm, forecast))
-                    mape = np.mean(np.abs((test_target_lstm - forecast) / test_target_lstm)) * 100
-
-                    model_performance['LSTM']['MAE'].append(mae)
-                    model_performance['LSTM']['RMSE'].append(rmse)
-                    model_performance['LSTM']['MAPE'].append(mape)
-                except Exception as e:
-                    if debug_mode:
-                        st.error(f"LSTM failed for {ticker}: {e}")
-
-            # Aggregate Model Performance
-            performance_summary = {}
-            for model_name in models:
-                if len(model_performance[model_name]['MAE']) > 0:
-                    mae_mean = np.mean(model_performance[model_name]['MAE'])
-                    rmse_mean = np.mean(model_performance[model_name]['RMSE'])
-                    mape_mean = np.mean(model_performance[model_name]['MAPE'])
-                    performance_summary[model_name] = {'MAE': mae_mean, 'RMSE': rmse_mean, 'MAPE': mape_mean}
-                else:
-                    performance_summary[model_name] = {'MAE': np.nan, 'RMSE': np.nan, 'MAPE': np.nan}
-
-            # Store results
-            results[ticker] = performance_summary
-
-            # Save performance metrics to the database
-            for model_name, metrics in performance_summary.items():
-                cursor.execute('''
-                    INSERT INTO performance_metrics (ticker, model_name, mae, rmse, mape)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (ticker, model_name, metrics['MAE'], metrics['RMSE'], metrics['MAPE']))
-            conn.commit()
-
-            # Create tabs for each ticker with the new order
-            with st.expander(f"{ticker} Analysis Details", expanded=False):
-                tab1, tab2, tab3 = st.tabs([
-                    "Forecasting" if language == 'English' else "預測",
-                    "Backtesting Performance" if language == 'English' else "回測表現",
-                    "Historical Data" if language == 'English' else "歷史數據"
-                ])
-
-                with tab1:
-                    st.subheader("Forecasting" if language == 'English' else "預測")
-                    # Prepare future dates and features before forecasting
-                    future_dates = pd.date_range(start=target.index[-1] + pd.DateOffset(days=1), periods=forecast_periods, freq='D')
-
-                    # Prepare future exogenous variables
-                    if use_exogenous and exog_df_combined is not None:
-                        # For simplicity, we'll assume exogenous variables remain constant
-                        last_exog_values = exog.iloc[-1].values.reshape(1, -1)
-                        future_exog = np.repeat(last_exog_values, forecast_periods, axis=0)
-                        future_exog = pd.DataFrame(future_exog, columns=exog.columns, index=future_dates)
-                    else:
-                        future_exog = None
-
-                    # Initialize lists for successful forecasts and their weights
-                    successful_forecasts = []
-                    successful_weights = []
-                    successful_model_names = []
-                    model_forecasts = {}
-
-                    # Collect MAPEs for weighting
-                    model_mapes = {model: performance_summary[model]['MAPE'] for model in models}
-
-                    # Find the best model based on MAPE
-                    best_model_name = min(performance_summary, key=lambda k: performance_summary[k]['MAPE'])
-                    best_model_mape = performance_summary[best_model_name]['MAPE']
-
-                    # Forecast with all models
-                    for model_name in models:
-                        if model_name == 'ARIMA':
-                            try:
-                                model_autoARIMA_full = auto_arima(
-                                    target,
-                                    exogenous=exog,
-                                    start_p=1,
-                                    start_q=1,
-                                    max_p=max_p,
-                                    max_q=max_q,
-                                    max_d=max_d,
-                                    m=m if seasonal else 1,
-                                    seasonal=seasonal,
-                                    trace=False,
-                                    error_action='ignore',
-                                    suppress_warnings=True,
-                                    stepwise=True,
-                                    information_criterion='aic',
-                                    max_order=20,
-                                    n_jobs=-1
-                                )
-                                order_full = model_autoARIMA_full.order
-                                seasonal_order_full = model_autoARIMA_full.seasonal_order
-
-                                model_full = SARIMAX(
-                                    target,
-                                    exog=exog,
-                                    order=order_full,
-                                    seasonal_order=seasonal_order_full,
-                                    enforce_stationarity=False,
-                                    enforce_invertibility=False
-                                )
-                                model_full_fit = model_full.fit(disp=False)
-
-                                # Forecast
-                                forecast_arima = model_full_fit.forecast(steps=forecast_periods, exog=future_exog)
-                                successful_forecasts.append(forecast_arima.values)
-                                successful_model_names.append('ARIMA')
-                                model_forecasts['ARIMA'] = forecast_arima.values
-                            except Exception as e:
-                                if debug_mode:
-                                    st.error(f"ARIMA forecasting failed for {ticker}: {e}")
-
-                        elif model_name == 'Prophet':
-                            try:
-                                prophet_full = pd.DataFrame({'ds': target.index, 'y': target.values})
-                                if use_exogenous and exog is not None:
-                                    for col in exog.columns:
-                                        prophet_full[col] = exog[col].values
-                                    prophet_model = Prophet(daily_seasonality=seasonal)
-                                    for col in exog.columns:
-                                        prophet_model.add_regressor(col)
-                                else:
-                                    prophet_model = Prophet(daily_seasonality=seasonal)
-                                prophet_model.fit(prophet_full)
-
-                                if use_exogenous and future_exog is not None:
-                                    prophet_future = pd.DataFrame({'ds': future_dates})
-                                    for col in future_exog.columns:
-                                        prophet_future[col] = future_exog[col].values
-                                else:
-                                    prophet_future = pd.DataFrame({'ds': future_dates})
-
-                                forecast = prophet_model.predict(prophet_future)
-                                forecast_prophet = forecast['yhat'].values
-                                successful_forecasts.append(forecast_prophet)
-                                successful_model_names.append('Prophet')
-                                model_forecasts['Prophet'] = forecast_prophet
-                            except Exception as e:
-                                if debug_mode:
-                                    st.error(f"Prophet forecasting failed for {ticker}: {e}")
-
-                        elif model_name == 'XGBoost':
-                            try:
-                                xgb_model = xgb.XGBRegressor(objective='reg:squarederror', n_estimators=100)
-                                xgb_model.fit(features, target)
-                                # Prepare future features (technical indicators)
-                                last_values = features.iloc[-1]
-                                future_features = pd.DataFrame(index=future_dates)
-                                for col in features.columns:
-                                    future_features[col] = last_values[col]
-                                forecast_xgb = xgb_model.predict(future_features)
-                                successful_forecasts.append(forecast_xgb)
-                                successful_model_names.append('XGBoost')
-                                model_forecasts['XGBoost'] = forecast_xgb
-                            except Exception as e:
-                                if debug_mode:
-                                    st.error(f"XGBoost forecasting failed for {ticker}: {e}")
-
-                        elif model_name == 'LSTM':
-                            try:
-                                scaler = MinMaxScaler(feature_range=(0, 1))
-                                scaled_target = scaler.fit_transform(target.values.reshape(-1, 1))
-
-                                # Prepare data for LSTM
-                                def create_dataset(dataset, look_back=1):
-                                    X, Y = [], []
-                                    for i in range(len(dataset) - look_back):
-                                        X.append(dataset[i:(i + look_back), 0])
-                                        Y.append(dataset[i + look_back, 0])
-                                    return np.array(X), np.array(Y)
-
-                                look_back = 5
-                                X_full, Y_full = create_dataset(scaled_target, look_back)
-                                X_full = X_full.reshape((X_full.shape[0], X_full.shape[1], 1))
-
-                                # Build LSTM Model
-                                lstm_model = Sequential()
-                                lstm_model.add(LSTM(50, input_shape=(X_full.shape[1], X_full.shape[2])))
-                                lstm_model.add(Dense(1))
-                                lstm_model.compile(loss='mean_squared_error', optimizer='adam')
-                                lstm_model.fit(X_full, Y_full, epochs=10, batch_size=16, verbose=0)
-
-                                # Forecast
-                                last_data = scaled_target[-look_back:].reshape(1, look_back, 1)
-                                forecast_lstm = []
-                                for _ in range(forecast_periods):
-                                    pred = lstm_model.predict(last_data)
-                                    forecast_lstm.append(pred[0][0])
-
-                                    # Reshape pred to match dimensions
-                                    pred_reshaped = pred.reshape((1, 1, 1))
-                                    last_data = np.concatenate((last_data[:, 1:, :], pred_reshaped), axis=1)
-
-                                forecast_lstm = scaler.inverse_transform(np.array(forecast_lstm).reshape(-1, 1)).flatten()
-                                successful_forecasts.append(forecast_lstm)
-                                successful_model_names.append('LSTM')
-                                model_forecasts['LSTM'] = forecast_lstm
-                            except Exception as e:
-                                if debug_mode:
-                                    st.error(f"LSTM forecasting failed for {ticker}: {e}")
-
-                    # Collect MAPEs and weights for successful models
-                    successful_mapes = [model_mapes[model] for model in successful_model_names if not np.isnan(model_mapes[model])]
-                    total_inverse_mape = sum(1 / mape for mape in successful_mapes)
-                    successful_weights = [(1 / model_mapes[model]) / total_inverse_mape for model in successful_model_names if not np.isnan(model_mapes[model])]
-
-                    # Check if we have any successful forecasts
-                    if successful_forecasts and successful_weights:
-                        # Weighted Ensemble Forecast
-                        forecasts_array = np.array([model_forecasts[model] for model in successful_model_names])
-                        ensemble_forecast = np.average(forecasts_array, axis=0, weights=successful_weights)
-
-                        predicted_prices_ensemble = pd.Series(ensemble_forecast, index=future_dates)
-
-                        latest_price = latest_prices[ticker]
-                        last_forecast_price_ensemble = predicted_prices_ensemble.iloc[-1]
-                        ratio_ensemble = (last_forecast_price_ensemble / latest_price - 1) * 100  # Percentage change
-
-                        # Display ensemble predicted price and comparison
-                        st.metric(
-                            label=f"Ensembled Predicted Price on {future_dates[-1].strftime('%Y-%m-%d')}",
-                            value=f"${last_forecast_price_ensemble:.2f}",
-                            delta=f"{ratio_ensemble:.2f}%"
+                    # ARIMA Model
+                    try:
+                        model_autoARIMA = auto_arima(
+                            train_target,
+                            exogenous=exog_train,
+                            start_p=1,
+                            start_q=1,
+                            max_p=max_p,
+                            max_q=max_q,
+                            max_d=max_d,
+                            m=m if seasonal else 1,
+                            seasonal=seasonal,
+                            trace=False,
+                            error_action='ignore',
+                            suppress_warnings=True,
+                            stepwise=True,
+                            information_criterion='aic',
+                            max_order=20,
+                            n_jobs=-1
                         )
+                        order = model_autoARIMA.order
+                        seasonal_order = model_autoARIMA.seasonal_order
 
-                        # Best Model Forecast
-                        if best_model_name in model_forecasts:
-                            best_forecast_values = model_forecasts[best_model_name]
-                            predicted_prices_best = pd.Series(best_forecast_values, index=future_dates)
+                        model = SARIMAX(
+                            train_target,
+                            exog=exog_train,
+                            order=order,
+                            seasonal_order=seasonal_order,
+                            enforce_stationarity=False,
+                            enforce_invertibility=False
+                        )
+                        model_fit = model.fit(disp=False)
 
-                            last_forecast_price_best = predicted_prices_best.iloc[-1]
-                            ratio_best = (last_forecast_price_best / latest_price - 1) * 100  # Percentage change
+                        # Forecast
+                        forecast = model_fit.forecast(steps=len(test_target), exog=exog_test)
+                        # Evaluate
+                        mae = mean_absolute_error(test_target, forecast)
+                        rmse = np.sqrt(mean_squared_error(test_target, forecast))
+                        mape = np.mean(np.abs((test_target - forecast) / test_target)) * 100
 
-                            # Display best model predicted price and comparison
-                            st.metric(
-                                label=f"Predicted Price on {future_dates[-1].strftime('%Y-%m-%d')} using {best_model_name}",
-                                value=f"${last_forecast_price_best:.2f}",
-                                delta=f"{ratio_best:.2f}%"
-                            )
+                        model_performance['ARIMA']['MAE'].append(mae)
+                        model_performance['ARIMA']['RMSE'].append(rmse)
+                        model_performance['ARIMA']['MAPE'].append(mape)
+                    except Exception as e:
+                        if debug_mode:
+                            st.error(f"ARIMA failed for {ticker}: {e}")
 
-                            # Plot forecasts
-                            fig_forecast = go.Figure()
-                            fig_forecast.add_trace(go.Scatter(x=target.index, y=target.values, mode='lines', name='Historical'))
-                            fig_forecast.add_trace(go.Scatter(x=predicted_prices_ensemble.index, y=predicted_prices_ensemble.values, mode='lines+markers', name='Ensemble Forecast'))
-                            fig_forecast.add_trace(go.Scatter(x=predicted_prices_best.index, y=predicted_prices_best.values, mode='lines+markers', name=f'{best_model_name} Forecast'))
-                            fig_forecast.update_layout(
-                                title=f'{ticker} Forecasted Prices',
-                                xaxis_title='Date',
-                                yaxis_title='Price'
-                            )
-                            st.plotly_chart(fig_forecast)
-
-                            # Save forecast to the database
-                            cursor.execute('''
-                                INSERT INTO forecasts (ticker, forecast_date, predicted_price, delta, model_names)
-                                VALUES (?, ?, ?, ?, ?)
-                            ''', (
-                                ticker,
-                                future_dates[-1].strftime('%Y-%m-%d'),
-                                last_forecast_price_ensemble,
-                                ratio_ensemble,
-                                ', '.join(successful_model_names)
-                            ))
-                            conn.commit()
+                    # Prophet Model
+                    try:
+                        prophet_train = pd.DataFrame({'ds': train_target.index, 'y': train_target.values})
+                        prophet_test = pd.DataFrame({'ds': test_target.index, 'y': test_target.values})
+                        if use_exogenous and exog_train is not None:
+                            for col in exog_train.columns:
+                                prophet_train[col] = exog_train[col].values
+                                prophet_test[col] = exog_test[col].values
+                            prophet_model = Prophet(daily_seasonality=seasonal)
+                            for col in exog_train.columns:
+                                prophet_model.add_regressor(col)
                         else:
-                            st.warning(f"Best model ({best_model_name}) did not produce a forecast." if language == 'English' else f"最佳模型（{best_model_name}）未能生成預測。")
+                            prophet_model = Prophet(daily_seasonality=seasonal)
+                        prophet_model.fit(prophet_train)
+
+                        forecast = prophet_model.predict(prophet_test)
+                        forecast_values = forecast['yhat'].values
+
+                        # Evaluate
+                        mae = mean_absolute_error(test_target, forecast_values)
+                        rmse = np.sqrt(mean_squared_error(test_target, forecast_values))
+                        mape = np.mean(np.abs((test_target - forecast_values) / test_target)) * 100
+
+                        model_performance['Prophet']['MAE'].append(mae)
+                        model_performance['Prophet']['RMSE'].append(rmse)
+                        model_performance['Prophet']['MAPE'].append(mape)
+                    except Exception as e:
+                        if debug_mode:
+                            st.error(f"Prophet failed for {ticker}: {e}")
+
+                    # XGBoost Model
+                    try:
+                        xgb_model = xgb.XGBRegressor(objective='reg:squarederror', n_estimators=100)
+                        xgb_model.fit(train_features, train_target)
+                        forecast = xgb_model.predict(test_features)
+
+                        # Evaluate
+                        mae = mean_absolute_error(test_target, forecast)
+                        rmse = np.sqrt(mean_squared_error(test_target, forecast))
+                        mape = np.mean(np.abs((test_target - forecast) / test_target)) * 100
+
+                        model_performance['XGBoost']['MAE'].append(mae)
+                        model_performance['XGBoost']['RMSE'].append(rmse)
+                        model_performance['XGBoost']['MAPE'].append(mape)
+                    except Exception as e:
+                        if debug_mode:
+                            st.error(f"XGBoost failed for {ticker}: {e}")
+
+                    # LSTM Model
+                    try:
+                        from sklearn.preprocessing import MinMaxScaler
+
+                        scaler = MinMaxScaler(feature_range=(0, 1))
+                        scaled_train = scaler.fit_transform(train_target.values.reshape(-1, 1))
+
+                        # Prepare data for LSTM
+                        def create_dataset(dataset, look_back=1):
+                            X, Y = [], []
+                            for i in range(len(dataset) - look_back):
+                                X.append(dataset[i:(i + look_back), 0])
+                                Y.append(dataset[i + look_back, 0])
+                            return np.array(X), np.array(Y)
+
+                        look_back = 5
+                        X_train_lstm, Y_train_lstm = create_dataset(scaled_train, look_back)
+                        X_train_lstm = X_train_lstm.reshape((X_train_lstm.shape[0], X_train_lstm.shape[1], 1))
+
+                        # Build LSTM Model
+                        lstm_model = Sequential()
+                        lstm_model.add(LSTM(50, input_shape=(X_train_lstm.shape[1], X_train_lstm.shape[2])))
+                        lstm_model.add(Dense(1))
+                        lstm_model.compile(loss='mean_squared_error', optimizer='adam')
+                        lstm_model.fit(X_train_lstm, Y_train_lstm, epochs=10, batch_size=16, verbose=0)
+
+                        # Prepare test data
+                        total_data = np.concatenate((train_target.values, test_target.values))
+                        inputs = total_data[len(total_data) - len(test_target) - look_back:]
+                        inputs_scaled = scaler.transform(inputs.reshape(-1, 1))
+                        X_test_lstm = []
+                        for i in range(look_back, len(inputs_scaled)):
+                            X_test_lstm.append(inputs_scaled[i - look_back:i, 0])
+                        X_test_lstm = np.array(X_test_lstm)
+                        X_test_lstm = X_test_lstm.reshape((X_test_lstm.shape[0], X_test_lstm.shape[1], 1))
+
+                        # Forecast
+                        forecast_scaled = lstm_model.predict(X_test_lstm)
+                        forecast = scaler.inverse_transform(forecast_scaled).flatten()
+
+                        # Align forecast with test_target
+                        test_target_lstm = test_target.values[:len(forecast)]
+
+                        # Evaluate
+                        mae = mean_absolute_error(test_target_lstm, forecast)
+                        rmse = np.sqrt(mean_squared_error(test_target_lstm, forecast))
+                        mape = np.mean(np.abs((test_target_lstm - forecast) / test_target_lstm)) * 100
+
+                        model_performance['LSTM']['MAE'].append(mae)
+                        model_performance['LSTM']['RMSE'].append(rmse)
+                        model_performance['LSTM']['MAPE'].append(mape)
+                    except Exception as e:
+                        if debug_mode:
+                            st.error(f"LSTM failed for {ticker}: {e}")
+
+                # Aggregate Model Performance
+                performance_summary = {}
+                for model_name in models:
+                    if len(model_performance[model_name]['MAE']) > 0:
+                        mae_mean = np.mean(model_performance[model_name]['MAE'])
+                        rmse_mean = np.mean(model_performance[model_name]['RMSE'])
+                        mape_mean = np.mean(model_performance[model_name]['MAPE'])
+                        performance_summary[model_name] = {'MAE': mae_mean, 'RMSE': rmse_mean, 'MAPE': mape_mean}
                     else:
-                        st.warning(f"No successful forecasts were generated for {ticker}." if language == 'English' else f"未能為 {ticker} 生成成功的預測。")
+                        performance_summary[model_name] = {'MAE': np.nan, 'RMSE': np.nan, 'MAPE': np.nan}
 
-                with tab2:
-                    st.subheader("Backtesting Performance" if language == 'English' else "回測表現")
-                    performance_df = pd.DataFrame(performance_summary).T
-                    st.dataframe(performance_df.style.format("{:.2f}"))
+                # Store results
+                results[ticker] = performance_summary
 
-                    # Plot model performance comparison
-                    fig_perf = go.Figure()
-                    fig_perf.add_trace(go.Bar(
-                        x=performance_df.index,
-                        y=performance_df['MAPE'],
-                        text=performance_df['MAPE'].apply(lambda x: f"{x:.2f}%"),
-                        textposition='auto'
-                    ))
-                    fig_perf.update_layout(
-                        title='Model Performance Comparison (MAPE)' if language == 'English' else '模型性能比較（MAPE）',
-                        xaxis_title='Model' if language == 'English' else '模型',
-                        yaxis_title='MAPE (%)'
-                    )
-                    st.plotly_chart(fig_perf)
+                # Save performance metrics to the database
+                for model_name, metrics in performance_summary.items():
+                    cursor.execute('''
+                        INSERT INTO performance_metrics (ticker, model_name, mae, rmse, mape)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (ticker, model_name, metrics['MAE'], metrics['RMSE'], metrics['MAPE']))
+                conn.commit()
 
-                    # Display best model
-                    st.write(f"Best Model: **{best_model_name}**" if language == 'English' else f"最佳模型：**{best_model_name}**")
+                # Create tabs for each ticker with the new order
+                with st.expander(f"{ticker} Analysis Details", expanded=False):
+                    tab1, tab2, tab3 = st.tabs([
+                        "Forecasting" if language == 'English' else "預測",
+                        "Backtesting Performance" if language == 'English' else "回測表現",
+                        "Historical Data" if language == 'English' else "歷史數據"
+                    ])
 
-                with tab3:
-                    st.subheader("Historical Data" if language == 'English' else "歷史數據")
-                    if debug_mode:
-                        st.dataframe(data_df.reset_index())
+                    with tab1:
+                        st.subheader("Forecasting" if language == 'English' else "預測")
+                        # Prepare future dates and features before forecasting
+                        future_dates = pd.date_range(start=target.index[-1] + pd.DateOffset(days=1), periods=forecast_periods, freq='D')
 
-                    # Plot historical data
-                    fig_hist = go.Figure()
-                    fig_hist.add_trace(go.Scatter(x=data_df.index, y=data_df['Adj Close'], mode='lines', name='Adjusted Close'))
-                    fig_hist.update_layout(
-                        title=f'{ticker} Historical Prices' if language == 'English' else f'{ticker} 歷史價格',
-                        xaxis_title='Date' if language == 'English' else '日期',
-                        yaxis_title='Price' if language == 'English' else '價格'
-                    )
-                    st.plotly_chart(fig_hist)
+                        # Prepare future exogenous variables
+                        if use_exogenous and exog_df_combined is not None:
+                            # For simplicity, we'll assume exogenous variables remain constant
+                            last_exog_values = exog.iloc[-1].values.reshape(1, -1)
+                            future_exog = np.repeat(last_exog_values, forecast_periods, axis=0)
+                            future_exog = pd.DataFrame(future_exog, columns=exog.columns, index=future_dates)
+                        else:
+                            future_exog = None
 
-            end_time_ticker = time.time()
-            elapsed_time_ticker = end_time_ticker - start_time_ticker
-            if debug_mode:
-                st.write(f"Time taken to process {ticker}: {elapsed_time_ticker:.2f} seconds")
+                        # Initialize lists for successful forecasts and their weights
+                        successful_forecasts = []
+                        successful_weights = []
+                        successful_model_names = []
+                        model_forecasts = {}
+
+                        # Collect MAPEs for weighting
+                        model_mapes = {model: performance_summary[model]['MAPE'] for model in models}
+
+                        # Find the best model based on MAPE
+                        best_model_name = min(performance_summary, key=lambda k: performance_summary[k]['MAPE'])
+                        best_model_mape = performance_summary[best_model_name]['MAPE']
+
+                        # Forecast with all models
+                        for model_name in models:
+                            if model_name == 'ARIMA':
+                                with st.spinner(f"Running ARIMA model for {ticker}..." if language == 'English' else f"正在運行 {ticker} 的 ARIMA 模型..."):
+                                    try:
+                                        model_autoARIMA_full = auto_arima(
+                                            target,
+                                            exogenous=exog,
+                                            start_p=1,
+                                            start_q=1,
+                                            max_p=max_p,
+                                            max_q=max_q,
+                                            max_d=max_d,
+                                            m=m if seasonal else 1,
+                                            seasonal=seasonal,
+                                            trace=False,
+                                            error_action='ignore',
+                                            suppress_warnings=True,
+                                            stepwise=True,
+                                            information_criterion='aic',
+                                            max_order=20,
+                                            n_jobs=-1
+                                        )
+                                        order_full = model_autoARIMA_full.order
+                                        seasonal_order_full = model_autoARIMA_full.seasonal_order
+
+                                        model_full = SARIMAX(
+                                            target,
+                                            exog=exog,
+                                            order=order_full,
+                                            seasonal_order=seasonal_order_full,
+                                            enforce_stationarity=False,
+                                            enforce_invertibility=False
+                                        )
+                                        model_full_fit = model_full.fit(disp=False)
+
+                                        # Forecast
+                                        forecast_arima = model_full_fit.forecast(steps=forecast_periods, exog=future_exog)
+                                        successful_forecasts.append(forecast_arima.values)
+                                        successful_model_names.append('ARIMA')
+                                        model_forecasts['ARIMA'] = forecast_arima.values
+                                    except Exception as e:
+                                        if debug_mode:
+                                            st.error(f"ARIMA forecasting failed for {ticker}: {e}")
+
+                            elif model_name == 'Prophet':
+                                with st.spinner(f"Running Prophet model for {ticker}..." if language == 'English' else f"正在運行 {ticker} 的 Prophet 模型..."):
+                                    try:
+                                        prophet_full = pd.DataFrame({'ds': target.index, 'y': target.values})
+                                        if use_exogenous and exog is not None:
+                                            for col in exog.columns:
+                                                prophet_full[col] = exog[col].values
+                                            prophet_model = Prophet(daily_seasonality=seasonal)
+                                            for col in exog.columns:
+                                                prophet_model.add_regressor(col)
+                                        else:
+                                            prophet_model = Prophet(daily_seasonality=seasonal)
+                                        prophet_model.fit(prophet_full)
+
+                                        if use_exogenous and future_exog is not None:
+                                            prophet_future = pd.DataFrame({'ds': future_dates})
+                                            for col in future_exog.columns:
+                                                prophet_future[col] = future_exog[col].values
+                                        else:
+                                            prophet_future = pd.DataFrame({'ds': future_dates})
+
+                                        forecast = prophet_model.predict(prophet_future)
+                                        forecast_prophet = forecast['yhat'].values
+                                        successful_forecasts.append(forecast_prophet)
+                                        successful_model_names.append('Prophet')
+                                        model_forecasts['Prophet'] = forecast_prophet
+                                    except Exception as e:
+                                        if debug_mode:
+                                            st.error(f"Prophet forecasting failed for {ticker}: {e}")
+
+                            elif model_name == 'XGBoost':
+                                with st.spinner(f"Running XGBoost model for {ticker}..." if language == 'English' else f"正在運行 {ticker} 的 XGBoost 模型..."):
+                                    try:
+                                        xgb_model = xgb.XGBRegressor(objective='reg:squarederror', n_estimators=100)
+                                        xgb_model.fit(features, target)
+                                        # Prepare future features (technical indicators)
+                                        last_values = features.iloc[-1]
+                                        future_features = pd.DataFrame(index=future_dates)
+                                        for col in features.columns:
+                                            future_features[col] = last_values[col]
+                                        forecast_xgb = xgb_model.predict(future_features)
+                                        successful_forecasts.append(forecast_xgb)
+                                        successful_model_names.append('XGBoost')
+                                        model_forecasts['XGBoost'] = forecast_xgb
+                                    except Exception as e:
+                                        if debug_mode:
+                                            st.error(f"XGBoost forecasting failed for {ticker}: {e}")
+
+                            elif model_name == 'LSTM':
+                                with st.spinner(f"Running LSTM model for {ticker}..." if language == 'English' else f"正在運行 {ticker} 的 LSTM 模型..."):
+                                    try:
+                                        scaler = MinMaxScaler(feature_range=(0, 1))
+                                        scaled_target = scaler.fit_transform(target.values.reshape(-1, 1))
+
+                                        # Prepare data for LSTM
+                                        def create_dataset(dataset, look_back=1):
+                                            X, Y = [], []
+                                            for i in range(len(dataset) - look_back):
+                                                X.append(dataset[i:(i + look_back), 0])
+                                                Y.append(dataset[i + look_back, 0])
+                                            return np.array(X), np.array(Y)
+
+                                        look_back = 5
+                                        X_full, Y_full = create_dataset(scaled_target, look_back)
+                                        X_full = X_full.reshape((X_full.shape[0], X_full.shape[1], 1))
+
+                                        # Build LSTM Model
+                                        lstm_model = Sequential()
+                                        lstm_model.add(LSTM(50, input_shape=(X_full.shape[1], X_full.shape[2])))
+                                        lstm_model.add(Dense(1))
+                                        lstm_model.compile(loss='mean_squared_error', optimizer='adam')
+                                        lstm_model.fit(X_full, Y_full, epochs=10, batch_size=16, verbose=0)
+
+                                        # Forecast
+                                        last_data = scaled_target[-look_back:].reshape(1, look_back, 1)
+                                        forecast_lstm = []
+                                        for _ in range(forecast_periods):
+                                            pred = lstm_model.predict(last_data)
+                                            forecast_lstm.append(pred[0][0])
+
+                                            # Reshape pred to match dimensions
+                                            pred_reshaped = pred.reshape((1, 1, 1))
+                                            last_data = np.concatenate((last_data[:, 1:, :], pred_reshaped), axis=1)
+
+                                        forecast_lstm = scaler.inverse_transform(np.array(forecast_lstm).reshape(-1, 1)).flatten()
+                                        successful_forecasts.append(forecast_lstm)
+                                        successful_model_names.append('LSTM')
+                                        model_forecasts['LSTM'] = forecast_lstm
+                                    except Exception as e:
+                                        if debug_mode:
+                                            st.error(f"LSTM forecasting failed for {ticker}: {e}")
+
+                        # Collect MAPEs and weights for successful models
+                        successful_mapes = [model_mapes[model] for model in successful_model_names if not np.isnan(model_mapes[model])]
+                        total_inverse_mape = sum(1 / mape for mape in successful_mapes)
+                        successful_weights = [(1 / model_mapes[model]) / total_inverse_mape for model in successful_model_names if not np.isnan(model_mapes[model])]
+
+                        # Check if we have any successful forecasts
+                        if successful_forecasts and successful_weights:
+                            # Weighted Ensemble Forecast
+                            forecasts_array = np.array([model_forecasts[model] for model in successful_model_names])
+                            ensemble_forecast = np.average(forecasts_array, axis=0, weights=successful_weights)
+
+                            predicted_prices_ensemble = pd.Series(ensemble_forecast, index=future_dates)
+
+                            latest_price = latest_prices[ticker]
+                            last_forecast_price_ensemble = predicted_prices_ensemble.iloc[-1]
+                            ratio_ensemble = (last_forecast_price_ensemble / latest_price - 1) * 100  # Percentage change
+
+                            # Display ensemble predicted price and comparison
+                            st.metric(
+                                label=f"Ensembled Predicted Price on {future_dates[-1].strftime('%Y-%m-%d')}",
+                                value=f"${last_forecast_price_ensemble:.2f}",
+                                delta=f"{ratio_ensemble:.2f}%"
+                            )
+
+                            # Best Model Forecast
+                            if best_model_name in model_forecasts:
+                                best_forecast_values = model_forecasts[best_model_name]
+                                predicted_prices_best = pd.Series(best_forecast_values, index=future_dates)
+
+                                last_forecast_price_best = predicted_prices_best.iloc[-1]
+                                ratio_best = (last_forecast_price_best / latest_price - 1) * 100  # Percentage change
+
+                                # Display best model predicted price and comparison
+                                st.metric(
+                                    label=f"Predicted Price on {future_dates[-1].strftime('%Y-%m-%d')} using {best_model_name}",
+                                    value=f"${last_forecast_price_best:.2f}",
+                                    delta=f"{ratio_best:.2f}%"
+                                )
+
+                                # Plot forecasts
+                                fig_forecast = go.Figure()
+                                fig_forecast.add_trace(go.Scatter(x=target.index, y=target.values, mode='lines', name='Historical'))
+                                fig_forecast.add_trace(go.Scatter(x=predicted_prices_ensemble.index, y=predicted_prices_ensemble.values, mode='lines+markers', name='Ensemble Forecast'))
+                                fig_forecast.add_trace(go.Scatter(x=predicted_prices_best.index, y=predicted_prices_best.values, mode='lines+markers', name=f'{best_model_name} Forecast'))
+                                fig_forecast.update_layout(
+                                    title=f'{ticker} Forecasted Prices',
+                                    xaxis_title='Date',
+                                    yaxis_title='Price'
+                                )
+                                st.plotly_chart(fig_forecast)
+
+                                # Save forecast to the database
+                                cursor.execute('''
+                                    INSERT INTO forecasts (ticker, forecast_date, predicted_price, delta, model_names)
+                                    VALUES (?, ?, ?, ?, ?)
+                                ''', (
+                                    ticker,
+                                    future_dates[-1].strftime('%Y-%m-%d'),
+                                    last_forecast_price_ensemble,
+                                    ratio_ensemble,
+                                    ', '.join(successful_model_names)
+                                ))
+                                conn.commit()
+                            else:
+                                st.warning(f"Best model ({best_model_name}) did not produce a forecast." if language == 'English' else f"最佳模型（{best_model_name}）未能生成預測。")
+                        else:
+                            st.warning(f"No successful forecasts were generated for {ticker}." if language == 'English' else f"未能為 {ticker} 生成成功的預測。")
+
+                    with tab2:
+                        st.subheader("Backtesting Performance" if language == 'English' else "回測表現")
+                        performance_df = pd.DataFrame(performance_summary).T
+                        st.dataframe(performance_df.style.format("{:.2f}"))
+
+                        # Plot model performance comparison
+                        fig_perf = go.Figure()
+                        fig_perf.add_trace(go.Bar(
+                            x=performance_df.index,
+                            y=performance_df['MAPE'],
+                            text=performance_df['MAPE'].apply(lambda x: f"{x:.2f}%"),
+                            textposition='auto'
+                        ))
+                        fig_perf.update_layout(
+                            title='Model Performance Comparison (MAPE)' if language == 'English' else '模型性能比較（MAPE）',
+                            xaxis_title='Model' if language == 'English' else '模型',
+                            yaxis_title='MAPE (%)'
+                        )
+                        st.plotly_chart(fig_perf)
+
+                        # Display best model
+                        st.write(f"Best Model: **{best_model_name}**" if language == 'English' else f"最佳模型：**{best_model_name}**")
+
+                    with tab3:
+                        st.subheader("Historical Data" if language == 'English' else "歷史數據")
+                        if debug_mode:
+                            st.dataframe(data_df.reset_index())
+
+                        # Plot historical data
+                        fig_hist = go.Figure()
+                        fig_hist.add_trace(go.Scatter(x=data_df.index, y=data_df['Adj Close'], mode='lines', name='Adjusted Close'))
+                        fig_hist.update_layout(
+                            title=f'{ticker} Historical Prices' if language == 'English' else f'{ticker} 歷史價格',
+                            xaxis_title='Date' if language == 'English' else '日期',
+                            yaxis_title='Price' if language == 'English' else '價格'
+                        )
+                        st.plotly_chart(fig_hist)
+
+                end_time_ticker = time.time()
+                elapsed_time_ticker = end_time_ticker - start_time_ticker
+                if debug_mode:
+                    st.write(f"Time taken to process {ticker}: {elapsed_time_ticker:.2f} seconds")
 
             # Update progress bar
             progress_bar.progress((idx + 1) * progress_step)
