@@ -14,3 +14,8 @@ openai
 google-generativeai
 tabulate
 statsmodels
+anthropic
+pmdarima
+xgboost
+tensorflow
+cython
