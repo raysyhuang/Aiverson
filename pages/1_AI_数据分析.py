@@ -4,7 +4,7 @@ import pandas as pd
 import google.generativeai as genai
 import anthropic
 import os
-from files.medical_data import medical_data_ckd, medical_data_dialysis, dialysis_prompt, CKD_prompt  # Import the data and prompts
+from files.medical_data import medical_data_ckd, medical_data_dialysis, dialysis_prompt, CKD_prompt, system_message_template  # Import the data and prompts
 import requests
 import json
 import logging
@@ -19,11 +19,13 @@ anthropic_api_key = st.secrets["api_keys"]["anthropic_api_key"]
 def generate_anthropic_insights(prompt, expert_role):
     try:
         client = anthropic.Anthropic(api_key=anthropic_api_key)
+        system_message = system_message_template.format(expert_role=expert_role)
         message = client.messages.create(
             model="claude-3-5-sonnet-20240620",
             max_tokens=3000,
             temperature=0,
-            system=f"你是一名经验丰富的{expert_role}，擅长慢性肾病（CKD）、透析及相关治疗。你将根据患者数据，使用肾衰竭风险方程（KFRE）等模型进行全面评估，并提供基于最新临床指南的治疗建议。",
+            top_p=1,
+            system=system_message,
             messages=[
                 {
                     "role": "user",
@@ -48,13 +50,13 @@ def generate_gpt_insights(prompt, expert_role):
         # Initialize the OpenAI client with the api_key
         client = OpenAI(api_key=openai_api_key)
         model_type = "gpt-4o"
-
+        system_message = system_message_template.format(expert_role=expert_role)
         completion = client.chat.completions.create(
             model=model_type,
             messages=[
                 {
                     "role": "system", 
-                    "content": f"你是一名经验丰富的{expert_role}，擅长慢性肾病（CKD）、透析及相关治疗。你将根据患者数据，使用肾衰竭风险方程（KFRE）等模型进行全面评估，并提供基于最新临床指南的治疗建议。"
+                    "content": system_message
                 },
                 {
                     "role": "user",
@@ -79,13 +81,14 @@ def generate_llama_insights(prompt, expert_role):
         headers = {
             "Content-Type": "application/json"
         }
+        system_message = system_message_template.format(expert_role=expert_role)
         data = {
             "model": "lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
             "messages": [
-                {"role": "system", "content": f"你是一名经验丰富的{expert_role}，擅长慢性肾病（CKD）、透析及相关治疗。你将根据患者数据，使用肾衰竭风险方程（KFRE）等模型进行全面评估，并提供基于最新临床指南的治疗建议。"},
+                {"role": "system", "content": system_message},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.7
+            "temperature": 0
         }
         
         logging.info("Attempting to connect to Llama server...")

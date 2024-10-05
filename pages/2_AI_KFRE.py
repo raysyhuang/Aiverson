@@ -2,13 +2,22 @@ import streamlit as st
 import pandas as pd
 import math
 import sqlite3
-from datetime import datetime
 import os
+import logging
+from datetime import datetime
+from openai import OpenAI
+import google.generativeai as genai
+import anthropic
+from files.medical_data import medical_data_ckd, medical_data_dialysis, dialysis_prompt, CKD_prompt, system_message_template  # Import the data and prompts
+
 
 # Access API keys from secrets
 openai_api_key = st.secrets["api_keys"]["openai_api_key"]
 gemini_api_key = st.secrets["api_keys"]["gemini_api_key"]
 anthropic_api_key = st.secrets["api_keys"]["anthropic_api_key"]
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 # Function to create the SQLite database and table if not exists
 def create_db():
@@ -39,32 +48,40 @@ def create_db():
 # Function to save inputs and results into the database
 def save_to_db(age, sex, egfr, acr, serum_creatinine, hemoglobin, calcium,
                phosphate, bicarbonate, albumin, systolic_bp, risk_2yr, risk_5yr):
-    conn = sqlite3.connect('kf_risk.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO kf_risk_results (age, sex, egfr, acr, serum_creatinine, hemoglobin,
-                                     calcium, phosphate, bicarbonate, albumin, systolic_bp,
-                                     risk_2yr, risk_5yr)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (age, sex, egfr, acr, serum_creatinine, hemoglobin, calcium, phosphate,
-          bicarbonate, albumin, systolic_bp, risk_2yr, risk_5yr))
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect('kf_risk.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO kf_risk_results (age, sex, egfr, acr, serum_creatinine, hemoglobin,
+                                         calcium, phosphate, bicarbonate, albumin, systolic_bp,
+                                         risk_2yr, risk_5yr)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (age, sex, egfr, acr, serum_creatinine, hemoglobin, calcium, phosphate,
+              bicarbonate, albumin, systolic_bp, risk_2yr, risk_5yr))
+        conn.commit()
+    except sqlite3.Error as e:
+        logging.error(f"Database error: {e}")
+    finally:
+        conn.close()
 
 # Function to retrieve data from the database
 def get_results_from_db():
-    conn = sqlite3.connect('kf_risk.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM kf_risk_results')
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+    try:
+        conn = sqlite3.connect('kf_risk.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM kf_risk_results')
+        rows = cursor.fetchall()
+        return rows
+    except sqlite3.Error as e:
+        logging.error(f"Database error: {e}")
+        return []
+    finally:
+        conn.close()
 
 # Function to calculate kidney failure risk with adjusted coefficients
 def kidney_failure_risk(age, sex, egfr, acr, serum_creatinine=0, hemoglobin=0,
                         calcium=0, phosphate=0, systolic_bp=0):
     # Adjusted intercepts and coefficients based on updated research
-    # Replace these with actual values from the latest studies
     intercept_2yr = -0.5  # Placeholder value
     intercept_5yr = 0.0   # Placeholder value
 
@@ -126,15 +143,14 @@ def determine_ckd_stage(egfr):
 # Function definitions for AI analysis
 def generate_gpt_insights(prompt, expert_role):
     try:
-        from openai import OpenAI
         client = OpenAI(api_key=openai_api_key)
-        model_type = "gpt-4o"
-        response = client.chat.completions.create(
-            model=model_type, 
+        system_message = system_message_template.format(expert_role=expert_role)
+        completion = client.chat.completions.create(
+            model="gpt-4o",
             messages=[
                 {
-                    "role": "system",
-                    "content": f"你是一名经验丰富的{expert_role}，擅长慢性肾病（CKD）、透析及相关治疗。你将根据患者数据，提供基于最新临床指南的治疗建议。"
+                    "role": "system", 
+                    "content": system_message
                 },
                 {
                     "role": "user",
@@ -142,65 +158,63 @@ def generate_gpt_insights(prompt, expert_role):
                 }
             ],
             temperature=0,
-            max_tokens=1500,
+            max_tokens=3000,
             top_p=1,
             frequency_penalty=0,
             presence_penalty=0
         )
-        return response.choices[0].message.content
+        return completion.choices[0].message.content
     except Exception as e:
+        logging.error(f"OpenAI API error: {e}")
         return f"OpenAI API 出错: {str(e)}. 跳过此分析。"
-
 
 def generate_gemini_insights(prompt, expert_role):
     try:
-        import google.generativeai as genai
         genai.configure(api_key=gemini_api_key)
-
         model = genai.GenerativeModel("gemini-1.5-pro")
         response = model.generate_content(prompt)
-
+        
         insights = ""
         if response.parts:
             for part in response.parts:
                 if hasattr(part, 'text'):
                     insights += part.text
-
+        
         if not insights:
             insights = "目前无法生成详细的分析报告。"
-
+        
         return insights
     except Exception as e:
+        logging.error(f"Gemini API error: {e}")
         return f"Gemini API 出错: {str(e)}. 跳过此分析。"
 
 def generate_anthropic_insights(prompt, expert_role):
     try:
-        import anthropic
-        anthropic_api_key = anthropic_api_key
-        os.environ["ANTHROPIC_API_KEY"] = anthropic_api_key
-
-        client = anthropic.Anthropic()
-        response = client.completion(
-            prompt=anthropic.HUMAN_PROMPT + prompt + anthropic.AI_PROMPT,
+        client = anthropic.Anthropic(api_key=anthropic_api_key)
+        system_message = system_message_template.format(expert_role=expert_role)
+        message = client.messages.create(
             model="claude-3-5-sonnet-20240620",
-            max_tokens_to_sample=3000,
+            max_tokens=3000,
             temperature=0,
+            top_p=1,
+            system=system_message,
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
         )
-        return message.content
+        if isinstance(message.content, list) and len(message.content) > 0:
+            text_block = message.content[0]
+            if hasattr(text_block, 'text'):
+                return text_block.text
+            elif isinstance(text_block, str):
+                return text_block.split("text='", 1)[1].split("', type='text')", 1)[0]
+        return "无法提取文本内容"
     except Exception as e:
+        logging.error(f"Anthropic API error: {e}")
         return f"Anthropic API 出错: {str(e)}. 跳过此分析。"
-
-
-# Function to load predefined medical data
-def load_medical_data():
-    try:
-        import sys
-        sys.path.append('files')  # Add the 'files' directory to the system path
-        from medical_data import medical_data_ckd, medical_data_dialysis, dialysis_prompt, CKD_prompt  # Import the data and prompts
-        return medical_data_ckd, medical_data_dialysis, dialysis_prompt, CKD_prompt
-    except ImportError:
-        st.error("无法加载预定义的医疗数据，请确保文件存在且路径正确。")
-        return None, None, None, None
 
 # Create the database and table if it doesn't exist
 create_db()
@@ -220,7 +234,8 @@ analysis_method = st.radio("选择分析方式", ("预定义医疗数据分析",
 
 if analysis_method == "预定义医疗数据分析":
     # Load predefined medical data
-    medical_data_ckd, medical_data_dialysis, dialysis_prompt, CKD_prompt = load_medical_data()
+    with st.expander("预定义医疗数据", expanded=False):
+        medical_data_ckd, medical_data_dialysis, dialysis_prompt, CKD_prompt
     if not medical_data_ckd or not medical_data_dialysis:
         st.stop()
 
@@ -317,9 +332,6 @@ if analysis_method == "预定义医疗数据分析":
                     st.subheader(f"Claude-3 医疗分析 - 患者 {i}")
                     insights = generate_anthropic_insights(medical_prompt, expert_role)
                     st.write(insights)
-                    insights2 = kidney_failure_risk(age, sex, egfr, acr, serum_creatinine, hemoglobin,
-                        calcium, phosphate, systolic_bp)
-                    st.write(insights2)
 
             progress_bar.progress(i * progress_step)
 
@@ -390,18 +402,18 @@ elif analysis_method == "手动输入":
             'Phosphate': phosphate,
             'Bicarbonate': bicarbonate,
             'Albumin': albumin,
-            'Systolic BP': systolic_bp,
-            '2-Year Risk (%)': risk_2yr,
-            '5-Year Risk (%)': risk_5yr
+            'Systolic BP': systolic_bp
+            # '2-Year Risk (%)': risk_2yr,
+            # '5-Year Risk (%)': risk_5yr
         }
 
         medical_df = pd.DataFrame([medical_data])
 
         st.subheader("AI 分析")
-        expert_role = st.selectbox("选择专家角色", ["CKD慢性肾病专家", "血液透析专家"])
+        expert_role = "CKD慢性肾病专家"
         prompt = f"请根据以下患者数据进行分析：\n{medical_df.to_string(index=False)}\n基于最新临床指南，提供治疗建议。"
-
         with st.expander("查看患者数据"):
+            st.write(prompt) 
             st.write(medical_df)
 
         tab1, tab2, tab3 = st.tabs(["GPT-4", "Gemini Pro", "Claude-3"])
@@ -554,6 +566,7 @@ if st.button("查看保存的结果 / View Saved Results"):
         ))
     else:
         st.write("数据库中没有结果 / No results found in the database.")
+
 
 
 

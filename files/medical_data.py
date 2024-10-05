@@ -138,6 +138,14 @@ medical_data_dialysis = {
     """
 }
 
+# Define the system message template
+system_message_template = """
+作为一名经验丰富的{expert_role}，您在慢性肾病（CKD）、透析及相关治疗方面拥有丰富的专业知识。
+您将运用肾衰竭风险方程（KFRE）等先进模型，对患者数据进行全面评估。
+您的目标是提供基于最新临床指南的精准治疗建议，以改善患者的健康状况和生活质量。
+请确保您的建议清晰、实用，并能有效指导临床决策。
+"""
+
 CKD_prompt = """
     数据如下：
     {medical_df}
@@ -165,96 +173,54 @@ CKD_prompt = """
     控制高血压、贫血及钙磷代谢，改善饮食和生活方式，定期复查 eGFR 和 ACR 以监测病情进展。
 """
 
-dialysis_prompt_old = """
-    数据如下：
-    {medical_df}
-
-    请根据以下格式撰写患者的透析评估报告，并根据患者的具体值提供动态的分析和管理建议.请使用简单的文本格式，不要使用粗体或标题格式，只需使用编号和项目符号。
-    
-    排版重点：
-	• 不使用粗体或标题格式
-	• 使用简单的编号和项目符号格式
-	• 简洁清晰地呈现每个评估和建议
-
-    患者透析评估报告
-
-    1. 透析前信息
-    - 体重: {medical_df.splitlines()[2].split('： ')[1]}
-    - 血压: {medical_df.splitlines()[3].split('： ')[1]}
-    - 脉搏: {medical_df.splitlines()[4].split('： ')[1]}
-    - 体温: {medical_df.splitlines()[5].split('： ')[1]}
-    - 干体重: {medical_df.splitlines()[6].split('： ')[1]}
-
-    2. 透析详情
-    - 透析开始时间: {medical_df.splitlines()[9].split('： ')[1]}
-    - 透析时长: {medical_df.splitlines()[10].split('： ')[1]}
-    - 血流速率: {medical_df.splitlines()[11].split('： ')[1]}
-    - 透析液流速: {medical_df.splitlines()[12].split('： ')[1]}
-    - 使用透析器: {medical_df.splitlines()[13].split('： ')[1]}
-    - 肝素剂量: {medical_df.splitlines()[14].split('： ')[1]}
-    - 目标超滤量: {medical_df.splitlines()[15].split('： ')[1]}
-
-    3. 透析中监测
-    - 血压读数: {medical_df.splitlines()[18].split('： ')[1]}
-    - 脉搏读数: {medical_df.splitlines()[19].split('： ')[1]}
-    - 实际超滤量: {medical_df.splitlines()[20].split('： ')[1]}
-    - 并发症: {medical_df.splitlines()[21].split('： ')[1]}
-
-    4. 透析后信息
-    - 体重: {medical_df.splitlines()[24].split('： ')[1]}
-    - 血压: {medical_df.splitlines()[25].split('： ')[1]}
-    - 脉搏: {medical_df.splitlines()[26].split('： ')[1]}
-    - 总超滤量: {medical_df.splitlines()[27].split('： ')[1]}
-    - 症状: {medical_df.splitlines()[28].split('： ')[1]}
-
-    5. 治疗建议
-    - 血压管理: 
-    - 贫血管理: 
-    - 透析方案调整: 
-    - 营养管理: 
-
-    6. 随访建议
-    - 定期随访：
-    - 营养咨询：
-
-    7. 患者教育
-    - 饮食: 
-    - 运动: 
-    - 透析管理与计划: 
-
-    8. 简要分析：
-    - 透析前信息: 体重 {medical_df.splitlines()[2].split('： ')[1]}, 血压 {medical_df.splitlines()[3].split('： ')[1]}, 脉搏 {medical_df.splitlines()[4].split('： ')[1]}, 体温 {medical_df.splitlines()[5].split('： ')[1]}, 干体重 {medical_df.splitlines()[6].split('： ')[1]}
-    - 透析详情: 透析开始时间 {medical_df.splitlines()[9].split('： ')[1]}, 透析时长 {medical_df.splitlines()[10].split('： ')[1]}, 血流速率 {medical_df.splitlines()[11].split('： ')[1]}, 透析液流速 {medical_df.splitlines()[12].split('： ')[1]}, 使用透析器 {medical_df.splitlines()[13].split('： ')[1]}, 肝素剂量 {medical_df.splitlines()[14].split('： ')[1]}, 目标超滤量 {medical_df.splitlines()[15].split('： ')[1]}
-    - 透析中监测: 血压读数 {medical_df.splitlines()[18].split('： ')[1]}, 脉搏读数 {medical_df.splitlines()[19].split('： ')[1]}, 实际超滤量 {medical_df.splitlines()[20].split('： ')[1]}, 并发症 {medical_df.splitlines()[21].split('： ')[1]}
-    - 透析后信息: 体重 {medical_df.splitlines()[24].split('： ')[1]}, 血压 {medical_df.splitlines()[25].split('： ')[1]}, 脉搏 {medical_df.splitlines()[26].split('： ')[1]}, 总超滤量 {medical_df.splitlines()[27].split('： ')[1]}, 症状 {medical_df.splitlines()[28].split('： ')[1]}
-"""
-
 dialysis_prompt = """
     数据如下：
     {medical_df}
 
-    请根据以下格式撰写患者的透析评估报告，并根据患者的具体值提供动态的分析和管理建议.请使用简单的文本格式，不要使用粗体或标题格式，只需使用编号和项目符号。
+    请根据以下格式撰写患者的透析评估报告，并根据患者的具体值提供动态分析和管理建议。请使用简单的文本格式，不要使用粗体或标题格式，只需使用编号和项目符号。
     
     排版重点：
-	• 不使用粗体或标题格式
-	• 使用简单的编号和项目符号格式
-	• 简洁清晰地呈现每个评估和建议
+    • 不使用粗体或标题格式
+    • 使用简单的编号和项目符号格式
+    • 简洁清晰地呈现每个评估和建议
 
     患者透析评估报告
-    1. 简要分析：
-    - 透析前信息: 体重, 血压, 脉搏, 体温, 干体重
-    - 透析详情: 透析开始时间, 透析时长, 血流速率, 透析液流速, 使用透析器, 肝素剂量, 目标超滤量
-    - 透析中监测: 血压读数, 脉搏读数, 实际超滤量, 并发症
-    - 透析后信息: 体重, 血压, 脉搏, 总超滤量, 症状
 
-    2. 治疗建议
-    - 血压管理: 
-    - 贫血管理: 
-    - 透析方案调整: 
-    - 营养管理: 
+    1. 透析前信息
+    - 体重: 
+    - 血压: 
+    - 脉搏: 
+    - 体温: 
+    - 干体重: 
 
-    3. 其他建议:  可以梳理但是不要过多，用项目符号控制在3条
-    随访建议 营养咨询 患者教育 
+    2. 透析详情
+    - 透析开始时间: 
+    - 透析时长: 
+    - 血流速率: 
+    - 透析液流速: 
+    - 使用透析器: 
+
+    3. 透析中监测
+    - 血压读数: 
+    - 脉搏读数: 
+    - 实际超滤量: 
+    - 并发症: 
+
+    4. 透析后信息
+    - 体重: 
+    - 血压: 
+    - 脉搏: 
+    - 总超滤量: 
+    - 症状: 
+
+    5. 治疗建议
+    - 血压管理: 根据透析前后的血压变化，建议调整抗高血压药物。
+    - 贫血管理: 评估血红蛋白水平，考虑补充铁剂或促红细胞生成素。
+    - 透析方案调整: 根据实际超滤量和目标超滤量的差异，调整透析参数。
+    - 营养管理: 根据体重变化和营养需求，调整饮食计划。
+
+    6. 其他建议
+    - 随访建议: 定期监测血压、体重和实验室指标。
+    - 营养咨询: 提供个性化的饮食建议。
+    - 患者教育: 强调透析管理的重要性，鼓励患者参与自我管理。
 """
-
-
