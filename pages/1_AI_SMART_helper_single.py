@@ -100,7 +100,7 @@ treatment_data = load_json_data('files/treatment_sxl.json')
 
 # Updated system_message_template
 system_message_template = """
-你是一位经验丰富的透析和肾脏病专家，同时也是一位医生的AI助手。你的任务是分析患者的实验室检查结果和透析治疗数据，
+你是一位经验丰富的透析和肾脏病专家，同时也是一位医生的AI助手。你的任务是分析患者的检查结果和透析治疗数据，
 并提供全面的医疗见解和治疗建议。你的分析和建议应该：
 
 1. 基于最新的临床指南和研究
@@ -131,7 +131,7 @@ system_message_template = """
 # New function to generate a more structured prompt
 def generate_structured_prompt(lab_data, treatment_data):
     prompt = f"""
-请分析以下透析患者的实验室检查结果和透析治疗数据，并提供详细的医疗分析和治疗建议。
+请分析以下透析患者的检查结果和透析治疗数据，并提供详细的医疗分析和治疗建议。
 
 患者基本信息：
 - 姓名：{lab_data['患者信息']['姓名']}
@@ -139,7 +139,7 @@ def generate_structured_prompt(lab_data, treatment_data):
 - 性别：{lab_data['患者信息']['性别']}
 - 首次透析时间：{treatment_data['患者信息']['首次透析时间']}
 
-实验室检查结果：
+检查结果：
 {json.dumps(lab_data, ensure_ascii=False, indent=2)}
 
 透析治疗数据：
@@ -193,7 +193,7 @@ st.markdown("""
 st.header("患者数据")
 col1, col2 = st.columns(2)
 with col1:
-    with st.expander("实验室检查结果"):
+    with st.expander("检查结果"):
         st.json(lab_data)
 with col2:
     with st.expander("透析治疗数据"):

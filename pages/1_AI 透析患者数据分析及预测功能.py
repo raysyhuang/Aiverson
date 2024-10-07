@@ -211,7 +211,7 @@ treatment_data = load_csv_data('files/treatment_month_sxl.csv')
 
 # System message template
 system_message_template = """
-你是一位经验丰富的透析和肾脏病专家，同时也是一位医生的AI助手。你的任务是分析患者的实验室检查结果和一个月的透析治疗数据，
+你是一位经验丰富的透析和肾脏病专家，同时也是一位医生的AI助手。你的任务是分析患者的检查结果和一个月的透析治疗数据，
 并提供全面的医疗见解和治疗建议。你的分析和建议应该：
 
 1. 基于最新的临床指南和研究
@@ -242,7 +242,7 @@ system_message_template = """
 
 def generate_structured_prompt(lab_data, treatment_data, analysis_results):
     prompt = f"""
-请分析以下透析患者的实验室检查结果和一个月的透析治疗数据，并提供详细的医疗分析和治疗建议。
+请分析以下透析患者的检查结果和一个月的透析治疗数据，并提供详细的医疗分析和治疗建议。
 
 患者基本信息：
 - 姓名：{lab_data['患者信息']['姓名']}
@@ -250,7 +250,7 @@ def generate_structured_prompt(lab_data, treatment_data, analysis_results):
 - 性别：{lab_data['患者信息']['性别']}
 - 透析号：{lab_data['患者信息']['透析号']}
 
-实验室检查结果：
+检查结果：
 {json.dumps(lab_data, ensure_ascii=False, indent=2)}
 
 一个月透析治疗数据摘要：
@@ -318,7 +318,7 @@ st.markdown("""
 st.header("患者数据")
 col1, col2 = st.columns(2)
 with col1:
-    with st.expander("实验室检查结果"):
+    with st.expander("检查结果"):
         st.json(lab_data)
 with col2:
     with st.expander("透析治疗数据（一个月）"):
@@ -329,21 +329,19 @@ analysis_results = analyze_dialysis_data(treatment_data)
 fig = create_plots(treatment_data, analysis_results)
 
 # Display plots
-st.header("月度数据趋势图表及预测")
-st.plotly_chart(fig, use_container_width=True)
-
-st.header("预测和风险分析")
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric("预测干体重", f"{analysis_results['predicted_dry_weight']} kg")
-    st.metric("建议超滤量", f"{analysis_results['suggested_uf']} L")
-with col2:
-    st.metric("下次低血压风险", analysis_results['low_bp_risk_next'])
-    st.metric("低血压风险百分比", f"{analysis_results['low_bp_risk_percentage']}%")
-with col3:
-    st.metric("平均血流量", f"{analysis_results['avg_blood_flow']} mL/min")
-    st.metric("平均透析液流量", f"{analysis_results['avg_dialysate_flow']} mL/min")
-    st.metric("平均碳酸氢根", f"{analysis_results['avg_hco3']} mmol/L")
+with st.expander("月度数据趋势图表及预测"):
+    st.plotly_chart(fig, use_container_width=True)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("预测干体重", f"{analysis_results['predicted_dry_weight']} kg")
+        st.metric("建议超滤量", f"{analysis_results['suggested_uf']} L")
+    with col2:
+        st.metric("下次低血压风险", analysis_results['low_bp_risk_next'])
+        st.metric("低血压风险百分比", f"{analysis_results['low_bp_risk_percentage']}%")
+    with col3:
+        st.metric("平均血流量", f"{analysis_results['avg_blood_flow']} mL/min")
+        st.metric("平均透析液流量", f"{analysis_results['avg_dialysate_flow']} mL/min")
+        st.metric("平均碳酸氢根", f"{analysis_results['avg_hco3']} mmol/L")
 
 st.header("AI 分析结果")
 if st.button('开始分析'):
