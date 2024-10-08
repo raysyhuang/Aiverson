@@ -1,4 +1,4 @@
-streamlit       
+streamlit
 yfinance
 pandas
 numpy
@@ -19,3 +19,5 @@ pmdarima
 xgboost
 tensorflow
 cython
+matplotlib
+sqlite3
