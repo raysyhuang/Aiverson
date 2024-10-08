@@ -20,4 +20,3 @@ xgboost
 tensorflow
 cython
 matplotlib
-sqlite3
