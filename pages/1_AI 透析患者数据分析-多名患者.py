@@ -89,7 +89,7 @@ def load_json_data(file_path):
 
 # Load and preprocess data
 lab_data = load_json_data('files/lab_month_50.json')
-treatment_data = load_csv_data('files/treatment_month_sxl.csv')
+treatment_data = load_csv_data('files/treatment_month_50.csv')
 #treatment_data = load_json_data('files/treatment_month_50.json')
 
 
