@@ -136,12 +136,9 @@ def create_plots(treatment_data):
 
     return fig
 
-# Load data from single files
-all_lab_data = load_json_data('files/lab_month_3.json')
-all_treatment_data = load_csv_data('files/treatment_month_3.csv')
-
-# Extract patient list
-patients = [patient['患者信息']['姓名'] for patient in all_lab_data if '患者信息' in patient]
+# Load data
+lab_data = load_json_data('files/lab_sxl.json')
+treatment_data = load_csv_data('files/treatment_month_sxl.csv')
 
 # System message template
 system_message_template = """
@@ -203,51 +200,56 @@ def generate_structured_prompt(lab_data, treatment_data):
 透析治疗数据（一个月）：
 {treatment_data.to_markdown(index=False)}
 
-请根据上述数据，按照以下结构提供你的分析和建议：
-1. 患者概况总结
-* 简要概述患者的主要情况、关键问题和任何显著变化。
+请按以下结构提供您的分析和建议：
 
-2. 主要发现和关注点
-* 使用Markdown表格列出3-5个最重要的发现或问题，包括：
-  * 发现/问题
-  * 具体数据和趋势
-  * 临床意义
+1. 患者概况
+   - 总结患者的整体状况和主要问题。
+   - 强调月度数据中的显著趋势或变化。
+
+2. 主要发现
+   | 发现 | 数据/趋势 | 临床意义 |
+   |------|-----------|----------|
+   | [发现1] | [数据1] | [意义1] |
+   | [发现2] | [数据2] | [意义2] |
+   | [发现3] | [数据3] | [意义3] |
 
 3. 详细分析
-* 对于每个方面（a-h），请：
-  * 指出异常或需要关注的数据点，并提供正常参考范围。
-  * 解释这些发现的临床意义，包括可能的原因和对患者的影响。
-  * 分析月度数据的趋势和变化，使用图表或表格（如适用）。
-  * 将患者的数据与标准指南或目标值进行比较，引用具体的指南和目标范围。
-  * 提供具体的改善建议，包括预期目标和行动计划。
-* 需要分析的方面： a. 贫血管理 b. 钙磷代谢 c. 营养状况 d. 透析充分性 e. 血压控制和血流动力学 f. 体重管理和水分平衡 g. 并发症预防和管理 h. 长期预后
+   对于每个领域（a-h），请提供：
+   - 异常或需关注的数据点及其参考范围
+   - 临床解释，包括潜在原因和影响
+   - 与指南目标的比较
+   - 具体改进建议
+   - 使用Plotly创建图表的Python代码，展示该领域相关指标的月度进展
+   
+   需分析的领域：
+   a. 贫血管理 
+   b. 矿物质和骨病变 
+   c. 营养状况 
+   d. 透析充分性 
+   e. 血压和血流动力学 
+   f. 液体管理 
+   g. 并发症预防
+   h. 长期预后
 
-4. 治疗建议和调整方案
-* 使用Markdown表格列出具体的治疗建议，包括：
-  * 治疗方面
-  * 建议措施
-  * 预期目标
+4. 治疗建议
+   | 方面 | 建议 | 目标 |
+   |------|------|------|
+   | [方面1] | [建议1] | [目标1] |
+   | [方面2] | [建议2] | [目标2] |
+   | [方面3] | [建议3] | [目标3] |
 
-5. 需要进一步检查或监测的项目
-* 使用Markdown表格列出需要额外关注的检查或监测项目，包括：
-  * 检查项目
-  * 目的
-  * 建议的频率
+5. 后续跟进建议
+   | 检查/监测项目 | 目的 | 频率 |
+   |---------------|------|------|
+   | [检查1] | [目的1] | [频率1] |
+   | [检查2] | [目的2] | [频率2] |
 
----
-参考文献和指南
-* 列出3-4个支持你建议的关键参考文献或指南，包括：
-  * 文献/指南名称
-  * 具体章节或页码
-  * 主要内容摘要
+6. 参考文献
+   - [参考文献1]：[简短描述]
+   - [参考文献2]：[简短描述]
+   - [参考文献3]：[简短描述]
 
-请确保你的分析和建议：
-* 具体、明确，直接引用患者数据和图表趋势来支持你的结论。
-* 涵盖所有关键数据点，包括正常和异常值。
-* 遵循最新的临床指南，并在比较时引用具体的标准和目标范围。
-* 提供可操作的建议，便于医生快速理解和采取行动。
-* 使用Markdown格式来呈现表格和图表，确保清晰易读。
-
+确保您的分析基于证据、针对患者具体情况，并且可操作。在您的建议中考虑生活质量和心理社会因素。为每个分析领域创建并包含相关的Plotly图表代码，展示月度进展。
 """
     return prompt
 
@@ -260,70 +262,63 @@ st.markdown("""
 它提供基于最新临床指南的详细医疗分析和个性化治疗建议，包括一个月的透析治疗数据和趋势图表。
 """)
 
-# Convert list to dictionary
-all_lab_data_dict = {patient['患者信息']['姓名']: patient for patient in all_lab_data}
+st.header("患者数据")
+col1, col2 = st.columns(2)
+with col1:
+    with st.expander("检查结果"):
+        st.json(lab_data)
+with col2:
+    with st.expander("透析治疗数据（一个月）"):
+        st.dataframe(treatment_data)
 
-# Patient selection
-st.header("患者选择")
-selected_patient = st.selectbox("选择要分析的患者", patients)
 
-if selected_patient:
-    st.header("患者数据")
-    col1, col2 = st.columns(2)
-    with col1:
-        with st.expander("检查结果"):
-            st.json(all_lab_data_dict[selected_patient])
-    with col2:
-        with st.expander("透析治疗数据（一个月）"):
-            patient_treatment_data = all_treatment_data[all_treatment_data['Patient'] == selected_patient].reset_index(drop=True)
-            st.dataframe(patient_treatment_data)
+# Display plots
+with st.expander("月度数据趋势图表"):
+    fig = create_plots(treatment_data)
+    st.plotly_chart(fig, use_container_width=True)
 
-    # Display plots
-    with st.expander("月度数据趋势图表"):
-        fig = create_plots(patient_treatment_data)
-        st.plotly_chart(fig, use_container_width=True)
 
-    # Generate the prompt for the selected patient
-    st.header("AI 分析结果")
-    if st.button('开始分析'):
-        prompt = generate_structured_prompt(all_lab_data_dict[selected_patient], patient_treatment_data)
+st.header("AI 分析结果")
+if st.button('开始分析'):
+    prompt = generate_structured_prompt(lab_data, treatment_data)
 
-        # Progress bar
-        progress_bar = st.progress(0)
-        total_analyses = 3  # GPT, Gemini, Claude
-        progress_step = 1 / total_analyses
+    # Progress bar
+    progress_bar = st.progress(0)
+    total_analyses = 3  # GPT, Gemini, Claude
+    progress_step = 1 / total_analyses
 
-        tab1, tab2, tab3 = st.tabs(["GPT-4", "Gemini Pro", "Claude-3"])
+    tab1, tab2, tab3 = st.tabs(["GPT-4", "Gemini Pro", "Claude-3"])
 
-        with tab1:
-            st.subheader("GPT-4 医疗分析")
-            with st.spinner('GPT-4 分析中，请稍候...'):
-                start_time_gpt = time.time()
-                model_type, gpt_insights = generate_gpt_insights(prompt, "透析和肾脏病专家")
-                end_time_gpt = time.time()
-                st.info(f"GPT-4 分析耗时: {end_time_gpt - start_time_gpt:.2f} 秒")
-                st.markdown(gpt_insights)
-                progress_bar.progress(1 * progress_step)
+    with tab1:
+        st.subheader("GPT-4 医疗分析")
+        with st.spinner('GPT-4 分析中，请稍候...'):
+            start_time_gpt = time.time()
+            model_type, gpt_insights = generate_gpt_insights(prompt, "透析和肾脏病专家")
+            end_time_gpt = time.time()
+            st.info(f"GPT-4 分析耗时: {end_time_gpt - start_time_gpt:.2f} 秒")
+            st.markdown(gpt_insights)
+            progress_bar.progress(1 * progress_step)
 
-        with tab2:
-            st.subheader("Gemini Pro 医疗分析")
-            with st.spinner('Gemini Pro 分析中，请稍候...'):    
-                start_time_gemini = time.time()
-                gemini_insights = generate_gemini_insights(prompt, "透析和肾脏病专家")
-                end_time_gemini = time.time()
-                st.info(f"Gemini Pro 分析耗时: {end_time_gemini - start_time_gemini:.2f} 秒")
-                st.markdown(gemini_insights)
-                progress_bar.progress(2 * progress_step)
+    with tab2:
+        st.subheader("Gemini Pro 医疗分析")
+        with st.spinner('Gemini Pro 分析中，请稍候...'):    
+            start_time_gemini = time.time()
+            gemini_insights = generate_gemini_insights(prompt, "透析和肾脏病专家")
+            end_time_gemini = time.time()
+            st.info(f"Gemini Pro 分析耗时: {end_time_gemini - start_time_gemini:.2f} 秒")
+            st.markdown(gemini_insights)
+            progress_bar.progress(2 * progress_step)
 
-        with tab3:
-            st.subheader("Claude-3 医疗分析")
-            with st.spinner('Claude-3 分析中，请稍候...'):
-                start_time_claude = time.time()
-                claude_insights = generate_anthropic_insights(prompt, "透析和肾脏病专家")
-                end_time_claude = time.time()
-                st.info(f"Claude-3 分析耗时: {end_time_claude - start_time_claude:.2f} 秒")
-                st.markdown(claude_insights)
-                progress_bar.progress(3 * progress_step)
+    with tab3:
+        st.subheader("Claude-3 医疗分析")
+        with st.spinner('Claude-3 分析中，请稍候...'):
+            start_time_claude = time.time()
+            claude_insights = generate_anthropic_insights(prompt, "透析和肾脏病专家")
+            end_time_claude = time.time()
+            st.info(f"Claude-3 分析耗时: {end_time_claude - start_time_claude:.2f} 秒")
+            st.markdown(claude_insights)
+            progress_bar.progress(3 * progress_step)
+
 else:
     st.info("点击'开始分析'以开始。")
 
