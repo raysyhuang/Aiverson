@@ -86,7 +86,9 @@ def load_json_data(file_path):
     with open(file_path, 'r', encoding='utf-8') as file:
         return json.load(file)
 
-
+def load_csv_data(file_path):
+    return pd.read_csv(file_path)
+    
 # Load and preprocess data
 lab_data = load_json_data('files/lab_month_50.json')
 treatment_data = load_csv_data('files/treatment_month_50.csv')
