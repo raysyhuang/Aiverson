@@ -12,11 +12,15 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
+# Set page configuration
+st.set_page_config(layout="centered", page_title="AI 透析患者数据分析-预测功能-测试版")
+
 # Access API keys from secrets
 openai_api_key = st.secrets["api_keys"]["openai_api_key"]
 gemini_api_key = st.secrets["api_keys"]["gemini_api_key"]
 anthropic_api_key = st.secrets["api_keys"]["anthropic_api_key"]
 
+@st.cache_data
 # Function definitions
 def generate_anthropic_insights(prompt, expert_role):
     try:
@@ -40,6 +44,7 @@ def generate_anthropic_insights(prompt, expert_role):
     except Exception as e:
         return f"Anthropic API 出错: {str(e)}. 跳过此分析。"
 
+@st.cache_data
 def generate_gpt_insights(prompt, expert_role):
     try:
         client = OpenAI(api_key=openai_api_key)
@@ -67,6 +72,7 @@ def generate_gpt_insights(prompt, expert_role):
     except Exception as e:
         return "gpt-4o", f"OpenAI API 出错: {str(e)}. 跳过此分析。"
 
+@st.cache_data
 def generate_gemini_insights(prompt, expert_role):
     try:
         genai.configure(api_key=gemini_api_key)
@@ -86,13 +92,16 @@ def generate_gemini_insights(prompt, expert_role):
     except Exception as e:
         return f"Gemini API 出错: {str(e)}. 跳过此分析。"
 
+@st.cache_data
 def load_json_data(file_path):
     with open(file_path, 'r', encoding='utf-8') as file:
         return json.load(file)
 
+@st.cache_data
 def load_csv_data(file_path):
     return pd.read_csv(file_path)
 
+@st.cache_data
 def analyze_dialysis_data(treatment_data):
     treatment_data['Date'] = pd.to_datetime(treatment_data['Date'])
     
@@ -307,7 +316,6 @@ def generate_structured_prompt(lab_data, treatment_data, analysis_results):
     return prompt
 
 # Streamlit app
-st.set_page_config(layout="centered", page_title="AI 透析患者数据分析")
 st.title("AI 透析患者数据分析")
 
 st.markdown("""

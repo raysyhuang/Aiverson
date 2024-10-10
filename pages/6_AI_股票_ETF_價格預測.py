@@ -137,6 +137,15 @@ debug_mode = st.checkbox("Show Debug Information" if language == 'English' else 
 # User Options
 app_mode = st.selectbox('Choose the app mode' if language == 'English' else '選擇應用模式', ['Run New Analysis' if language == 'English' else '運行新分析', 'View Saved Results' if language == 'English' else '查看已保存的結果'])
 
+@st.cache_data
+def fetch_data(ticker, start_date, end_date):
+    return yf.download(ticker, start=start_date, end=end_date + pd.DateOffset(days=1), progress=False)
+
+@st.cache_data
+def fetch_exogenous_data(exog_symbol, start_date, end_date):
+    exog_df = yf.download(exog_symbol, start=start_date, end=end_date + pd.DateOffset(days=1), progress=False)
+    return exog_df['Adj Close'].resample('D').last().fillna(method='ffill')
+
 if app_mode == 'Run New Analysis' if language == 'English' else '運行新分析':
     # User Inputs
     st.header("Input Parameters" if language == 'English' else "輸入參數")
@@ -245,9 +254,8 @@ if app_mode == 'Run New Analysis' if language == 'English' else '運行新分析
                 st.write("Fetching exogenous data..." if language == 'English' else "正在獲取外生變數數據...")
                 exog_data = {}
                 for exog_symbol in selected_exogenous:
-                    exog_df = yf.download(exog_symbol, start=start_date, end=end_date + pd.DateOffset(days=1), progress=False)
-                    exog_df = exog_df['Adj Close'].resample('D').last().fillna(method='ffill')
-                    exog_df = exog_df[exog_df.index <= current_date]
+                    with st.spinner(f"Fetching data for {exog_symbol}..."):
+                        exog_df = fetch_exogenous_data(exog_symbol, start_date, end_date)
                     exog_data[exog_symbol] = exog_df
                 exog_df_combined = pd.DataFrame(exog_data)
                 exog_df_combined = exog_df_combined.fillna(method='ffill').fillna(method='bfill')
@@ -259,7 +267,8 @@ if app_mode == 'Run New Analysis' if language == 'English' else '運行新分析
                 st.markdown(f"### {ticker}")
                 start_time_ticker = time.time()
                 try:
-                    data = yf.download(ticker, start=start_date, end=end_date + pd.DateOffset(days=1), progress=False)
+                    with st.spinner(f"Fetching data for {ticker}..."):
+                        data = fetch_data(ticker, start_date, end_date)
                 except Exception as e:
                     st.warning(f"Failed to fetch data for {ticker}: {e}")
                     continue

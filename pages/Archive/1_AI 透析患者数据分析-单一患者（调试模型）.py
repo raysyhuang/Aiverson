@@ -9,16 +9,12 @@ import anthropic
 import time
 import logging
 
-# Set page configuration
-st.set_page_config(layout="centered", page_title="AI 透析患者数据分析-单一患者")
-
 # Access API keys from secrets
 openai_api_key = st.secrets["api_keys"]["openai_api_key"]
 gemini_api_key = st.secrets["api_keys"]["gemini_api_key"]
 anthropic_api_key = st.secrets["api_keys"]["anthropic_api_key"]
 
 # Function definitions
-@st.cache_data
 def generate_anthropic_insights(prompt, expert_role):
     try:
         client = anthropic.Anthropic(api_key=anthropic_api_key)
@@ -40,7 +36,6 @@ def generate_anthropic_insights(prompt, expert_role):
     except Exception as e:
         return f"Anthropic API 出错: {str(e)}. 跳过此分析。"
 
-@st.cache_data
 def generate_gpt_insights(prompt, expert_role):
     try:
         client = OpenAI(api_key=openai_api_key)
@@ -68,7 +63,6 @@ def generate_gpt_insights(prompt, expert_role):
     except Exception as e:
         return "gpt-4o", f"OpenAI API 出错: {str(e)}. 跳过此分析。"
 
-@st.cache_data
 def generate_gemini_insights(prompt, expert_role):
     try:
         genai.configure(api_key=gemini_api_key)
@@ -88,12 +82,10 @@ def generate_gemini_insights(prompt, expert_role):
     except Exception as e:
         return f"Gemini API 出错: {str(e)}. 跳过此分析。"
 
-@st.cache_data
 def load_json_data(file_path):
     with open(file_path, 'r', encoding='utf-8') as file:
         return json.load(file)
 
-@st.cache_data
 def load_csv_data(file_path):
     return pd.read_csv(file_path)
 
@@ -177,7 +169,7 @@ system_message_template = """
   * 分析月度数据的趋势和变化，使用图表或表格展示（如适用）。
   * 将患者的数据与标准指南或目标值进行详细比较，引用具体的指南和目标范围。
   * 提供具体的改善建议，包括可采取的措施和预期目标。
-* 需要分析的方面： a. 贫血管理 b. 钙磷代谢 c. 营养状况 d. 透析充分性 e. 血压控制和血流动力学 f. 体重管理和水分平衡 g. 并发症预防和管理 h. 长期预后
+* 需要分析的方面： a. 贫��管理 b. 钙磷代谢 c. 营养状况 d. 透析充分性 e. 血压控制和血流动力学 f. 体重管理和水分平衡 g. 并发症预防和管理 h. 长期预后
 
 4. 治疗建议和调整方案
 * 使用Markdown表格列出具体的治疗建议。
@@ -197,20 +189,7 @@ system_message_template = """
 * 回答应全面且简洁明了，便于医生快速理解和采取行动。
 """
 
-def generate_structured_prompt(lab_data, treatment_data):
-    prompt = f"""
-请分析以下透析患者的检查结果和一个月的透析治疗数据，并提供详细的医疗分析和治疗建议。
-患者基本信息：
-* 姓名：{lab_data['患者信息']['姓名']}
-* 年龄：{lab_data['患者信息']['年龄']}岁
-* 性别：{lab_data['患者信息']['性别']}
-
-检查结果：
-{json.dumps(lab_data, ensure_ascii=False, indent=2)}
-
-透析治疗数据（一个月）：
-{treatment_data.to_markdown(index=False)}
-
+template_prompt = """
 请根据上述数据，按照以下结构提供你的分析和建议：
 1. 患者概况总结
 * 简要概述患者的主要情况、关键问题和任何显著变化。
@@ -255,11 +234,28 @@ def generate_structured_prompt(lab_data, treatment_data):
 * 遵循最新的临床指南，并在比较时引用具体的标准和目标范围。
 * 提供可操作的建议，便于医生快速理解和采取行动。
 * 使用Markdown格式来呈现表格和图表，确保清晰易读。
+"""
 
+def generate_structured_prompt(lab_data, treatment_data):
+    prompt = f"""
+请分析以下透析患者的检查结果和一个月的透析治疗数据，并提供详细的医疗分析和治疗建议。
+患者基本信息：
+* 姓名：{lab_data['患者信息']['姓名']}
+* 年龄：{lab_data['患者信息']['年龄']}岁
+* 性别：{lab_data['患者信息']['性别']}
+
+检查结果：
+{json.dumps(lab_data, ensure_ascii=False, indent=2)}
+
+透析治疗数据（一个月）：
+{treatment_data.to_markdown(index=False)}
+
+{template_prompt}
 """
     return prompt
 
 # Streamlit app
+st.set_page_config(layout="centered", page_title="AI 透析患者数据分析")
 st.title("AI 透析患者数据分析")
 
 st.markdown("""
@@ -291,46 +287,47 @@ if selected_patient:
         st.plotly_chart(fig, use_container_width=True)
 
     # Generate the prompt for the selected patient
-    st.header("AI 分析结果")
+    st.header("AI 医疗分析")
+
+    # Add text input for custom system message
+    with st.expander("系统预设"):
+         # Add model selection
+        selected_models = st.multiselect('模型可多选：', ['GPT-4', 'Gemini Pro', 'Claude-3'], default=['Claude-3'])
+        custom_system_message = st.text_area("自定义系统消息", system_message_template, height=300)
+        custom_prompt = st.text_area("自定义提示词", template_prompt, height=300)
+       
+
     if st.button('开始分析'):
-        prompt = generate_structured_prompt(all_lab_data_dict[selected_patient], patient_treatment_data)
+        # Use custom prompt if provided, otherwise use the default prompt
+        prompt = custom_prompt if custom_prompt.strip() else generate_structured_prompt(all_lab_data_dict[selected_patient], patient_treatment_data)
+
+        # Use custom system message if provided
+        system_message = custom_system_message if custom_system_message.strip() else system_message_template
 
         # Progress bar
         progress_bar = st.progress(0)
-        total_analyses = 3  # GPT, Gemini, Claude
-        progress_step = 1 / total_analyses
+        total_analyses = len(selected_models)
+        progress_step = 1 / total_analyses if total_analyses > 0 else 0
 
-        tab1, tab2, tab3 = st.tabs(["GPT-4", "Gemini Pro", "Claude-3"])
+        # Dynamically create tabs based on selected models
+        tabs = st.tabs(selected_models)
 
-        with tab1:
-            st.subheader("GPT-4 医疗分析")
-            with st.spinner('GPT-4 分析中，请稍候...'):
-                start_time_gpt = time.time()
-                model_type, gpt_insights = generate_gpt_insights(prompt, "透析和肾脏病专家")
-                end_time_gpt = time.time()
-                st.info(f"GPT-4 分析耗时: {end_time_gpt - start_time_gpt:.2f} 秒")
-                st.markdown(gpt_insights)
-                progress_bar.progress(1 * progress_step)
+        for i, model in enumerate(selected_models):
+            with tabs[i]:
+                st.subheader(f"{model} 医疗分析")
+                with st.spinner(f'{model} 分析中，请稍候...'):
+                    start_time = time.time()
+                    if model == 'GPT-4':
+                        model_type, insights = generate_gpt_insights(prompt, "透析和肾脏病专家")
+                    elif model == 'Gemini Pro':
+                        insights = generate_gemini_insights(prompt, "透析和肾脏病专家")
+                    elif model == 'Claude-3':
+                        insights = generate_anthropic_insights(prompt, "透析和肾脏病专家")
+                    end_time = time.time()
+                    st.info(f"{model} 分析耗时: {end_time - start_time:.2f} 秒")
+                    st.markdown(insights)
+                    progress_bar.progress((i + 1) * progress_step)
 
-        with tab2:
-            st.subheader("Gemini Pro 医疗分析")
-            with st.spinner('Gemini Pro 分析中，请稍候...'):    
-                start_time_gemini = time.time()
-                gemini_insights = generate_gemini_insights(prompt, "透析和肾脏病专家")
-                end_time_gemini = time.time()
-                st.info(f"Gemini Pro 分析耗时: {end_time_gemini - start_time_gemini:.2f} 秒")
-                st.markdown(gemini_insights)
-                progress_bar.progress(2 * progress_step)
-
-        with tab3:
-            st.subheader("Claude-3 医疗分析")
-            with st.spinner('Claude-3 分析中，请稍候...'):
-                start_time_claude = time.time()
-                claude_insights = generate_anthropic_insights(prompt, "透析和肾脏病专家")
-                end_time_claude = time.time()
-                st.info(f"Claude-3 分析耗时: {end_time_claude - start_time_claude:.2f} 秒")
-                st.markdown(claude_insights)
-                progress_bar.progress(3 * progress_step)
 else:
     st.info("点击'开始分析'以开始。")
 
