@@ -198,10 +198,12 @@ st.markdown("""
 它提供基于最新临床指南的详细医疗分析和个性化治疗建议，包括一个月的透析治疗数据和趋势图表。
 """)
 
-# Replace the tab creation with radio buttons
-analysis_type = st.radio("选择分析类型", ["多名患者", "单一患者"])
+tab1, tab2 = st.tabs(["多名患者", "单一患者"])
 
-if analysis_type == "多名患者":
+# Convert list to dictionary (move this outside of the tabs)
+all_lab_data_dict = {patient['患者信息']['姓名']: patient for patient in all_lab_data}
+
+with tab1:
     st.header("患者数据")
     col1, col2 = st.columns(2)
     with col1:
@@ -233,7 +235,6 @@ if analysis_type == "多名患者":
                 st.info(f"GPT-4 分析耗时: {end_time_gpt - start_time_gpt:.2f} 秒")
                 st.markdown(gpt_insights)
                 progress_bar.progress(1 * progress_step)
-                st.download_button("下载文本", gpt_insights, key="download_gpt_multi")
 
         with tab2:
             st.subheader("Gemini Pro 医疗分析")
@@ -244,7 +245,6 @@ if analysis_type == "多名患者":
                 st.info(f"Gemini Pro 分析耗时: {end_time_gemini - start_time_gemini:.2f} 秒")
                 st.markdown(gemini_insights)
                 progress_bar.progress(2 * progress_step)
-                st.download_button("下载文本", gemini_insights, key="download_gemini_multi")
 
         with tab3:
             st.subheader("Claude-3 医疗分析")
@@ -255,11 +255,11 @@ if analysis_type == "多名患者":
                 st.info(f"Claude-3 分析耗时: {end_time_claude - start_time_claude:.2f} 秒")
                 st.markdown(claude_insights)
                 progress_bar.progress(3 * progress_step)
-                st.download_button("下载文本", claude_insights, key="download_claude_multi")
     else:
         st.info("点击'开始分析'以开始。")
 
-else:  # Single patient analysis
+with tab2:
+    # Patient selection
     st.header("患者选择")
     selected_patient = st.selectbox("选择要分析的患者", patients, index=patients.index(st.session_state.selected_patient) if st.session_state.selected_patient else 0)
 
@@ -269,12 +269,7 @@ else:  # Single patient analysis
         col1, col2 = st.columns(2)
         with col1:
             with st.expander("检查结果"):
-                # Find the lab data for the selected patient
-                patient_lab_data = next((patient for patient in all_lab_data if patient['患者信息']['姓名'] == selected_patient), None)
-                if patient_lab_data:
-                    st.json(patient_lab_data)
-                else:
-                    st.error(f"未找到 {selected_patient} 的检查结果")
+                st.json(all_lab_data_dict[selected_patient])
         with col2:
             with st.expander("透析治疗数据（一个月）"):
                 patient_treatment_data = all_treatment_data[all_treatment_data['Patient'] == selected_patient].reset_index(drop=True)
@@ -289,7 +284,7 @@ else:  # Single patient analysis
         if st.button('开始分析', key='single_patient_analysis'):
 
             system_message_template = system_message_single_patient_chinese
-            prompt = generate_structured_prompt_single_patient(patient_lab_data, patient_treatment_data)
+            prompt = generate_structured_prompt_single_patient(all_lab_data_dict[selected_patient], patient_treatment_data)
             
             # Progress bar
             progress_bar = st.progress(0)
@@ -307,7 +302,7 @@ else:  # Single patient analysis
                     st.info(f"GPT-4 分析耗时: {end_time_gpt - start_time_gpt:.2f} 秒")
                     st.markdown(gpt_insights)
                     progress_bar.progress(1 * progress_step)
-                    st.download_button("下载文本", gpt_insights, key="download_gpt_single")
+
             with tab2:
                 st.subheader("Gemini Pro 医疗分析")
                 with st.spinner('Gemini Pro 分析中，请稍候...'):    
@@ -317,7 +312,6 @@ else:  # Single patient analysis
                     st.info(f"Gemini Pro 分析耗时: {end_time_gemini - start_time_gemini:.2f} 秒")
                     st.markdown(gemini_insights)
                     progress_bar.progress(2 * progress_step)
-                    st.download_button("下载文本", gemini_insights, key="download_gemini_single")
 
             with tab3:
                 st.subheader("Claude-3 医疗分析")
@@ -328,7 +322,6 @@ else:  # Single patient analysis
                     st.info(f"Claude-3 分析耗时: {end_time_claude - start_time_claude:.2f} 秒")
                     st.markdown(claude_insights)
                     progress_bar.progress(3 * progress_step)
-                    st.download_button("下载文本", claude_insights, key="download_claude_single")
     else:
         st.info("请选择一个患者进行分析。")
 
